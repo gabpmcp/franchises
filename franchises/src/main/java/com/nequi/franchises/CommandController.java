@@ -54,9 +54,9 @@ public class CommandController {
                             .validate(required("branchId"), isNonEmptyString("branchId"),
                                     required("newName"), isNonEmptyString("newName"));
                     case "AddProductToBranch" -> new Command("AddProductToBranch", command)
-                            .validate(required("branchId"), isNonEmptyString("branchId"),
+                            .validate(required("branchId"), isNonEmptyString("branchId"), matchesPattern("branchId", "[A-Z]*\\d+"),
                                     required("productName"), isNonEmptyString("productName"),
-                                    required("initialStock"), isPositive("initialStock"));
+                                    required("initialStock"), isPositive("initialStock"), isNumeric("initialStock"));
                     case "UpdateProductStock" -> new Command("UpdateProductStock", command)
                             .validate(required("productId"), isNonEmptyString("productId"),
                                     required("quantityChange"), isNumeric("quantityChange"));
@@ -75,10 +75,10 @@ public class CommandController {
                             .validate(required("fromBranchId"), isNonEmptyString("fromBranchId"),
                                     required("toBranchId"), isNonEmptyString("toBranchId"),
                                     required("productId"), isNonEmptyString("productId"),
-                                    required("quantity"), isPositive("quantity"));
+                                    required("quantity"), isNumeric("quantity"), isPositive("quantity"));
                     case "AdjustProductStock" -> new Command("AdjustProductStock", command)
                             .validate(required("productId"), isNonEmptyString("productId"),
-                                    required("newStock"), isPositive("newStock"));
+                                    required("newStock"), isNumeric("newStock"), isPositive("newStock"));
                     default -> new ValidationResult(false, List.of("Type doesn't exist in the system!"));
                 }).map((ValidationResult result) -> result.isValid() ? command // Devuelve el comando si es válido
                      : result.toMap()) // Devuelve el ValidationResult si no es válido

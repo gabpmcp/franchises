@@ -24,7 +24,7 @@ public record Command(String type, Map<String, Serializable> data) {
                 .filter(result -> !result.isValid()); // Filtra los que fallan
 
         return errors.isEmpty() ? new ValidationResult(true, List.empty()) : new ValidationResult(false,
-            errors.foldLeft(List.empty(), (accum, current) -> accum.appendAll(current.errors())));
+            errors.foldLeft(List.empty(), (accum, current) -> accum.appendAll(current.errors()).distinct()));
     }
 
     public Map<String, Serializable> toMap() {

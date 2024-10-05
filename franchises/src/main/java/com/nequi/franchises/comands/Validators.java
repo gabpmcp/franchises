@@ -38,11 +38,15 @@ public class Validators {
 
     public static Validator isPositive(String field) {
         return (input) -> {
-            int value = input.getAs(field, 0);
-            if (value <= 0) {
-                return new ValidationResult(false, List.of("%s must be a positive number".formatted(field)));
+            try {
+                int value = Integer.parseInt(input.data().getOrElse(field, "").toString());
+                if (value <= 0) {
+                    return new ValidationResult(false, List.of("%s must be a positive number".formatted(field)));
+                }
+                return new ValidationResult(true, List.of());
+            } catch (NumberFormatException e) {
+                return new ValidationResult(false, List.of("%s must be a numeric value".formatted(field)));
             }
-            return new ValidationResult(true, List.of());
         };
     }
 
@@ -69,7 +73,7 @@ public class Validators {
     public static Validator isNumeric(String field) {
         return (input) -> {
             try {
-                Integer.parseInt(input.data().get(field).toString());
+                Integer.parseInt(input.data().getOrElse(field, "").toString());
                 return new ValidationResult(true, List.of());
             } catch (NumberFormatException e) {
                 return new ValidationResult(false, List.of("%s must be a numeric value".formatted(field)));
