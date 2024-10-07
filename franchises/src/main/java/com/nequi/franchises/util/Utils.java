@@ -1,16 +1,14 @@
 package com.nequi.franchises.util;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.nequi.franchises.comands.Command;
-import com.nequi.franchises.comands.CommandFactory;
 import com.nequi.franchises.config.SerializerConfig;
-import io.vavr.Function0;
 import io.vavr.Function1;
 import io.vavr.Function2;
 import io.vavr.collection.HashMap;
 import io.vavr.collection.List;
 import io.vavr.collection.Map;
 import io.vavr.control.Try;
+import org.jetbrains.annotations.NotNull;
 import reactor.core.publisher.Mono;
 
 import java.io.Serializable;
@@ -42,35 +40,33 @@ public class Utils {
         "CreateFranchise".equals(command.getOrElse("type", "").toString())
             ? Mono.just(HashMap.of("command", command, "events", List.empty()))
             : Mono.fromCallable(() -> fetchEvents.apply(command.getOrElse("aggregateId", "").toString()))
-            .map(events -> HashMap.<String, Serializable>of("command", command, "events", events))
+            .map(events -> buildResult(command, events))
             .onErrorResume(e -> Mono.error(new RuntimeException("Error loading events for aggregateId: " + command.getOrElse("aggregateId", "").toString(), e)));
 
+    @NotNull
+    private static Map<String, Serializable> buildResult(Map<String, Serializable> command, List<Map<String, Object>> events) {
+        return HashMap.of("command", command, "events", events);
+    }
+
     // Función para persistir los eventos generados
-    public Function1<Function2<List<Map<String, Object>>, String, List<Map<String, Object>>>, Step> persistEvents = saveEvents -> command ->
-        // Persistencia en Cassandra
-        Mono.just(events);  // Simulación de persistencia
+    public static Function1<Function2<List<Map<String, Serializable>>, String, List<Map<String, Serializable>>>, Step> persistEvents = saveEvents -> result -> {
+        // Persistencia en DynamoDB
+        var events = getValue(result, "events", List.<Map<String, Serializable>>empty());
+        var aggregateId = getValue(result,"aggregateId", "");
+        saveEvents.apply(events, aggregateId);
+        return Mono.just(result);
+    };
+        
 
     // Esta función retorna la implementación de eventLoader según el entorno
-    public static Map<String, Step> createEventLoader(String property, Function1<String, String> getEnvironment) {
-        String environment = getEnvironment.apply(property); // Obtener el entorno de la variable de entorno
-
+    public static Map<String, Step> createEventLoader() {
         var deps = HashMap.of(
             "fetchEvents", Utils.downloadEvents.apply(fetchEventsFromDynamo()),
-            "fetchEventsTest", map -> Mono.just(HashMap.of("command", HashMap.empty(), "events", List.empty()))
+            "fetchEventsTest", map -> Mono.just(HashMap.of("command", HashMap.empty(), "events", List.empty())),
+            "saveEvents", Utils.persistEvents.apply(saveEventsStrongly()),
+            "saveEventsTest", map -> Mono.just(HashMap.of("command", HashMap.empty(), "events", List.empty()))
         );
 
         return deps;
-
-//        return switch (environment != null ? environment : "default") {
-//            case "production" ->
-//            case "develop" ->
-//                    HashMap.of("simulateEvents", Function1.<Map<String, Serializable>, Mono<HashMap<String, Serializable>>>of(aggregateId -> Mono.just(
-//                            HashMap.of("command", CommandFactory.createFranchiseCommand("STB").toMap(), "events", List.of( // Simulación para desarrollo
-//                                    HashMap.of("eventType", "FranchiseCreated", "aggregateId", aggregateId),
-//                                    HashMap.of("eventType", "BranchAdded", "branchId", "456", "franchiseId", "STB", "aggregateId", aggregateId)
-//                            )))));
-//            default ->
-//                    HashMap.of("simulateDefault", () -> Function1.of(aggregateId -> List.empty())); // Entorno por defecto o en caso de que falte la variable
-//        };
     }
 }

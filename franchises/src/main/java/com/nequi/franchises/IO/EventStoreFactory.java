@@ -1,5 +1,6 @@
 package com.nequi.franchises.IO;
 
+import com.nequi.franchises.config.SerializerConfig;
 import io.vavr.Function1;
 import io.vavr.Function2;
 import io.vavr.collection.HashMap;
@@ -7,6 +8,8 @@ import io.vavr.collection.List;
 import io.vavr.collection.Map;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
+
+import java.io.Serializable;
 
 import static com.nequi.franchises.util.Utils.parsePayload;
 
@@ -47,7 +50,7 @@ public class EventStoreFactory {
     }
 
     // Función sin argumentos que retorna una Function2
-    public static Function2<List<Map<String, Object>>, String, List<Map<String, Object>>> saveEventsStrongly() {
+    public static Function2<List<Map<String, Serializable>>, String, List<Map<String, Serializable>>> saveEventsStrongly() {
         return (events, aggregateId) -> {
             List<TransactWriteItem> transactWriteItems = events
                     .map(event -> createTransactWriteItem(aggregateId, event));
@@ -62,7 +65,7 @@ public class EventStoreFactory {
         };
     }
 
-    private static TransactWriteItem createTransactWriteItem(String aggregateId, Map<String, Object> event) {
+    private static TransactWriteItem createTransactWriteItem(String aggregateId, Map<String, Serializable> event) {
         Put put = Put.builder()
                 .tableName("Events")
                 .item(createPutRequest(aggregateId, event).toJavaMap())
@@ -71,7 +74,7 @@ public class EventStoreFactory {
     }
 
     // Función auxiliar para crear una solicitud de PutItem para cada evento
-    private static Map<String, AttributeValue> createPutRequest(String aggregateId, Map<String, Object> event) {
+    private static Map<String, AttributeValue> createPutRequest(String aggregateId, Map<String, Serializable> event) {
         return io.vavr.collection.HashMap.of(
                 "aggregateId", AttributeValue.builder().s(aggregateId).build(),
                 "sortKey", AttributeValue.builder().s(event.get("sortKey").toString()).build(),

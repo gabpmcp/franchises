@@ -26,11 +26,11 @@ import static com.nequi.franchises.comands.Validators.*;
 public class CommandController {
 
     // Inyectamos la función del eventLoader usando la fábrica
-    private final Map<String, Step> eventLoader = Utils.createEventLoader("ENVIRONMENT", property -> Option.of(System.getProperty(property)).getOrElse(""));
+    private final Map<String, Step> depsLoader = Utils.createEventLoader();
 
     @PostMapping("/command")
-    public Mono<ResponseEntity<Map<String, Serializable>>> handleCommand(@RequestBody Map<String, Serializable> commandMap) {
-        return createCommandHandler().apply(commandMap) // Directamente invoca createCommandHandler
+    public Mono<ResponseEntity<Map<String, Serializable>>> handleCommand(@RequestBody java.util.Map<String, Serializable> commandMap) {
+        return createCommandHandler().apply(HashMap.ofAll(commandMap)) // Directamente invoca createCommandHandler
                 .map(ResponseEntity::ok)
                 .onErrorResume(e -> Mono.just(ResponseEntity.badRequest().body(HashMap.of("error", e.getMessage()))));
     }
@@ -39,7 +39,7 @@ public class CommandController {
     private Function<Map<String, Serializable>, Mono<Map<String, Serializable>>> createCommandHandler() {
         return commandMap -> Mono.just(commandMap)
                 .flatMap(this::validateCommand)    // Validación del comando
-                .flatMap(eventLoader.get("fetchEvents").get());         // Carga de eventos del event store
+                .flatMap(depsLoader.get("fetchEvents").get());         // Carga de eventos del event store
 //                .flatMap(this::projectState)       // Proyección del estado a partir de los eventos
 //                .flatMap(this::decide)             // Toma de decisiones de negocio
 //                .flatMap(this::persistEvents)      // Persistencia de los eventos generados
@@ -113,13 +113,40 @@ public class CommandController {
                 : Mono.error(new IllegalArgumentException("Validation failed: " + result.errors().mkString(", ")))); // Si no es válido, devolver un Mono.error con los errores de validación)
     }
 
-
-
-    // Función para proyectar el estado actual
-    private Mono<Map<String, Serializable>> projectState(Map<String, Serializable> commandMap) {
-        // Proyección del estado
-        return Mono.just(commandMap);  // Simulación de proyección de estado
-    }
+//    private Mono<Map<String, Serializable>> projectState(List<Map<String, Object>> events) {
+//        // Estado inicial vacío
+//        Map<String, Serializable> initialState = io.vavr.collection.HashMap.empty();
+//
+//        // Proyectar cada evento sobre el estado
+//        return Mono.just(events.foldLeft(initialState, (state, event) -> {
+//            // Dispatcher de eventos
+//            return switch (event.get("eventType").toString()) {
+//                case "FranchiseCreated" -> state.put("franchiseId", event.get("aggregateId"))
+//                        .put("franchiseName", event.get("payload"));
+//                case "FranchiseNameUpdated" -> state.put("oldFranchiseName", state.get("franchiseName"))
+//                        .put("franchiseName", event.get("payload").get("newFranchiseName"));
+//                case "BranchAdded" -> state.put("branchId", event.get("payload").get("branchId"))
+//                        .put("branchName", event.get("payload").get("branchName"));
+//                case "BranchNameUpdated" -> state.put("oldBranchName", state.get("branchName"))
+//                        .put("branchName", event.get("payload").get("newBranchName"));
+//                case "ProductAddedToBranch" -> state.put("productId", event.get("payload").get("productId"))
+//                        .put("initialStock", event.get("payload").get("initialStock"));
+//                case "ProductStockUpdated" -> state.put("productId", event.get("payload").get("productId"))
+//                        .put("stockChange", event.get("payload").get("quantityChange"));
+//                case "ProductRemovedFromBranch" -> state.remove("productId")
+//                        .put("branchId", event.get("payload").get("branchId"));
+//                case "BranchRemoved" -> state.remove("branchId");
+//                case "FranchiseRemoved" -> state.remove("franchiseId").remove("branchId");
+//                case "ProductTransferredBetweenBranches" -> state.put("oldBranchId", state.get("branchId"))
+//                        .put("branchId", event.get("payload").get("toBranchId"))
+//                        .put("productId", event.get("payload").get("productId"));
+//                case "ProductStockAdjusted" -> state.put("productId", event.get("payload").get("productId"))
+//                        .put("newStock", event.get("payload").get("newStock"));
+//                case "NotifyStockDepleted" -> state.put("productId", event.get("payload").get("productId"));
+//                default -> state; // Si no se reconoce el evento, se devuelve el estado tal como está.
+//            };
+//        }));
+//    }
 
     // Función para tomar decisiones de negocio
     private Mono<Map<String, Serializable>> decide(Map<String, Serializable> commandMap) {

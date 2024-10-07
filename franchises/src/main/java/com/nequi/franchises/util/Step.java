@@ -7,5 +7,5 @@ import reactor.core.publisher.Mono;
 
 import java.io.Serializable;
 
-public interface Step extends Function1<Map<String, Serializable>, Mono<HashMap<String, Serializable>>> {
+public interface Step extends Function1<Map<String, Serializable>, Mono<Map<String, Serializable>>> {
 }
