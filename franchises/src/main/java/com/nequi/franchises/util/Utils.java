@@ -7,6 +7,7 @@ import io.vavr.Function2;
 import io.vavr.collection.HashMap;
 import io.vavr.collection.List;
 import io.vavr.collection.Map;
+import io.vavr.control.Option;
 import io.vavr.control.Try;
 import org.jetbrains.annotations.NotNull;
 import reactor.core.publisher.Mono;
@@ -19,20 +20,27 @@ import static com.nequi.franchises.IO.EventStoreFactory.saveEventsStrongly;
 public class Utils {
     @SuppressWarnings("unchecked")
     public static <K, T> T getValue(Map<K, ?> map, K key, T defaultValue) {
+        // Si la key es un String con ".", buscamos en el path anidado
+        if (key instanceof String && ((String) key).contains(".")) {
+            return (T) getValueByPath((Map<String, Object>) map, (String) key).getOrElse(defaultValue);
+        }
+        // Si no es anidado, buscamos el valor atómico
         var value = map.get(key).toOption();
         return value.isDefined() ? (T) value.get() : defaultValue;
     }
 
-    // Función bind genérica
-    public static Map<String, Serializable> bind(Map<String, Serializable> inputMap, Function1<Map<String, Serializable>, Boolean> predicate, Function1<Map<String, Serializable>, Map<String, Serializable>> transformation) {
-        // Aplica la transformación al mapa de entrada
-        return predicate.apply(inputMap) ? transformation.apply(inputMap) : inputMap;
+    private static Option<Object> getValueByPath(Map<String, Object> map, String path) {
+        return Option.of(path.split("\\."))
+                .flatMap(keys -> traverse(map, keys, 0));
     }
 
-    // Función para parsear el payload
-    public static Map<String, Object> parsePayload(String payloadJson) {
-        return Try.of(() -> SerializerConfig.mapper.readValue(payloadJson, new TypeReference<Map<String, Object>>() {}))
-                .getOrElseThrow(() -> new RuntimeException("Error parsing payload"));
+    private static Option<Object> traverse(Map<String, Object> map, String[] keys, int index) {
+        return index == keys.length
+                ? Option.none()
+                : map.get(keys[index])
+                .flatMap(v -> (index == keys.length - 1)
+                        ? Option.of(v)
+                        : Option.of(v).flatMap(subMap -> traverse((Map<String, Object>) subMap, keys, index + 1)));
     }
 
     // Función para cargar eventos desde el event store
@@ -69,4 +77,19 @@ public class Utils {
 
         return deps;
     }
+
+//    public static Option<Object> getNestedValue(Map<String, Object> map, String path) {
+//        return Option.of(path.split("\\."))
+//                .flatMap(keys -> traverse(map, keys, 0));
+//    }
+//
+//    @SuppressWarnings("unchecked")
+//    private static Option<Object> traverse(Map<String, Object> map, String[] keys, int index) {
+//        return index == keys.length
+//                ? Option.none()
+//                : map.get(keys[index])
+//                .flatMap(v -> (index == keys.length - 1)
+//                        ? Option.of(v)
+//                        : Option.of(v).flatMap(subMap -> traverse((Map<String, Object>) subMap, keys, index + 1)));
+//    }
 }

@@ -1,6 +1,5 @@
 package com.nequi.franchises.IO;
 
-import com.nequi.franchises.config.SerializerConfig;
 import io.vavr.Function1;
 import io.vavr.Function2;
 import io.vavr.collection.HashMap;
@@ -8,11 +7,7 @@ import io.vavr.collection.List;
 import io.vavr.collection.Map;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 import software.amazon.awssdk.services.dynamodb.model.*;
-
 import java.io.Serializable;
-
-import static com.nequi.franchises.util.Utils.parsePayload;
-
 
 public class EventStoreFactory {
 

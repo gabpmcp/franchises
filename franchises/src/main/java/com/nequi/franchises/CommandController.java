@@ -21,6 +21,7 @@ import java.io.Serializable;
 import java.util.function.Function;
 
 import static com.nequi.franchises.comands.Validators.*;
+import static com.nequi.franchises.util.Utils.getValue;
 
 @RestController
 public class CommandController {
@@ -113,40 +114,63 @@ public class CommandController {
                 : Mono.error(new IllegalArgumentException("Validation failed: " + result.errors().mkString(", ")))); // Si no es válido, devolver un Mono.error con los errores de validación)
     }
 
-//    private Mono<Map<String, Serializable>> projectState(List<Map<String, Object>> events) {
-//        // Estado inicial vacío
-//        Map<String, Serializable> initialState = io.vavr.collection.HashMap.empty();
-//
-//        // Proyectar cada evento sobre el estado
-//        return Mono.just(events.foldLeft(initialState, (state, event) -> {
-//            // Dispatcher de eventos
-//            return switch (event.get("eventType").toString()) {
-//                case "FranchiseCreated" -> state.put("franchiseId", event.get("aggregateId"))
-//                        .put("franchiseName", event.get("payload"));
-//                case "FranchiseNameUpdated" -> state.put("oldFranchiseName", state.get("franchiseName"))
-//                        .put("franchiseName", event.get("payload").get("newFranchiseName"));
-//                case "BranchAdded" -> state.put("branchId", event.get("payload").get("branchId"))
-//                        .put("branchName", event.get("payload").get("branchName"));
-//                case "BranchNameUpdated" -> state.put("oldBranchName", state.get("branchName"))
-//                        .put("branchName", event.get("payload").get("newBranchName"));
-//                case "ProductAddedToBranch" -> state.put("productId", event.get("payload").get("productId"))
-//                        .put("initialStock", event.get("payload").get("initialStock"));
-//                case "ProductStockUpdated" -> state.put("productId", event.get("payload").get("productId"))
-//                        .put("stockChange", event.get("payload").get("quantityChange"));
-//                case "ProductRemovedFromBranch" -> state.remove("productId")
-//                        .put("branchId", event.get("payload").get("branchId"));
-//                case "BranchRemoved" -> state.remove("branchId");
-//                case "FranchiseRemoved" -> state.remove("franchiseId").remove("branchId");
-//                case "ProductTransferredBetweenBranches" -> state.put("oldBranchId", state.get("branchId"))
-//                        .put("branchId", event.get("payload").get("toBranchId"))
-//                        .put("productId", event.get("payload").get("productId"));
-//                case "ProductStockAdjusted" -> state.put("productId", event.get("payload").get("productId"))
-//                        .put("newStock", event.get("payload").get("newStock"));
-//                case "NotifyStockDepleted" -> state.put("productId", event.get("payload").get("productId"));
-//                default -> state; // Si no se reconoce el evento, se devuelve el estado tal como está.
-//            };
-//        }));
-//    }
+    public static Mono<Map<String, Serializable>> projectState(Map<String, Serializable> initialState, List<Map<String, Object>> events) {
+        // Comenzamos con el estado inicial proporcionado y aplicamos cada evento sobre él
+        return Mono.just(events.foldLeft(initialState, (state, event) -> {
+            // Dispatcher por tipo de evento
+            return switch (event.get("eventType").toString()) {
+                case "FranchiseCreated" -> state.put("franchiseId", event.get("aggregateId").get().toString())
+                        .put("franchiseName", getValue(event, "payload.franchiseName", "")) //event.get("payload").get("franchiseName"))
+                        .put("franchiseExists", true); // Marca que la franquicia existe
+
+                case "FranchiseNameUpdated" -> state.put("oldFranchiseName", state.get("franchiseName"))
+                        .put("franchiseName", getValue(event, "payload.newFranchiseName", "")); //event.get("payload").get("newFranchiseName"));
+
+                case "BranchAdded" -> state.put("branchId", getValue(event, "payload.branchId", "")) //event.get("payload").get("branchId"))
+                        .put("branchName", getValue(event, "payload.branchName", "")) //event.get("payload").get("branchName"))
+                        .put("branchExists", true); // Marca que la sucursal existe
+
+                case "BranchNameUpdated" -> state.put("oldBranchName", state.get("branchName"))
+                        .put("branchName", getValue(event, "payload.newBranchName", "")); //event.get("payload").get("newBranchName"));
+
+                case "ProductAddedToBranch" -> state.put("productId", getValue(event, "payload.productId", "")) //event.get("payload").get("productId"))
+                        .put("initialStock", getValue(event, "payload.initialStock", 0)) //event.get("payload").get("initialStock"))
+                        .put("currentStock", getValue(event, "payload.initialStock", 0)) //event.get("payload").get("initialStock")) // Inicializa el stock actual
+                        .put("productExists", true); // Marca que el producto existe en la sucursal
+
+                case "ProductStockUpdated" -> {
+                    // Actualiza el stock actual en función del cambio
+                    int newStock = getValue(state, "currentStock", 0) + getValue(state, "quantityChange", 0);
+                    yield state.put("currentStock", newStock); // Actualiza el stock
+                }
+
+                case "ProductRemovedFromBranch" -> state.remove("productId")
+                        .put("productExists", false); // Marca que el producto ya no existe
+
+                case "BranchRemoved" -> state.remove("branchId")
+                        .put("branchExists", false); // Marca que la sucursal ya no existe
+
+                case "FranchiseRemoved" -> state.remove("franchiseId")
+                        .put("franchiseExists", false) // Marca que la franquicia ya no existe
+                        .remove("branchId")
+                        .put("branchExists", false); // Remueve también las sucursales
+
+                case "ProductTransferredBetweenBranches" -> {
+                    // Transferencia entre sucursales, actualiza el branchId en el estado
+                    state.put("oldBranchId", state.get("branchId"));
+                    state.put("branchId", getValue(event, "payload.toBranchId", "")); //event.get("payload").get("toBranchId"));
+                    yield state.put("productId", getValue(event, "payload.productId", "")); //event.get("payload").get("productId"));
+                }
+
+                case "ProductStockAdjusted" -> state.put("productId", getValue(event, "payload.productId", ""))//event.get("payload").get("productId"))
+                        .put("newStock", getValue(event, "payload.newStock", 0)) //event.get("payload").get("newStock"))
+                        .put("currentStock", getValue(event, "payload.newStock", 0)); //event.get("payload").get("newStock"));
+
+                default -> state; // Si no se reconoce el evento, se devuelve el estado tal como está.
+            };
+        }));
+    }
+
 
     // Función para tomar decisiones de negocio
     private Mono<Map<String, Serializable>> decide(Map<String, Serializable> commandMap) {
