@@ -40,8 +40,8 @@ public class CommandController {
     private Function<Map<String, Serializable>, Mono<Map<String, Serializable>>> createCommandHandler() {
         return commandMap -> Mono.just(commandMap)
                 .flatMap(this::validateCommand)    // Validación del comando
-                .flatMap(depsLoader.get("fetchEvents").get());         // Carga de eventos del event store
-//                .flatMap(this::projectState)       // Proyección del estado a partir de los eventos
+                .flatMap(depsLoader.get("fetchEvents").get())         // Carga de eventos del event store
+                .flatMap(result -> projectState.apply(HashMap.empty(), getValue(result, "events", List.empty())));       // Proyección del estado a partir de los eventos
 //                .flatMap(this::decide)             // Toma de decisiones de negocio
 //                .flatMap(this::persistEvents)      // Persistencia de los eventos generados
 //                .flatMap(this::notifyEvents);      // Notificación de eventos externos
@@ -114,11 +114,11 @@ public class CommandController {
                 : Mono.error(new IllegalArgumentException("Validation failed: " + result.errors().mkString(", ")))); // Si no es válido, devolver un Mono.error con los errores de validación)
     }
 
-    public static Mono<Map<String, Serializable>> projectState(Map<String, Serializable> initialState, List<Map<String, Object>> events) {
+    public static Function2<Map<String, Serializable>, List<Map<String, Object>>, Mono<Map<String, Serializable>>> projectState = (initialState, events) ->
         // Comenzamos con el estado inicial proporcionado y aplicamos cada evento sobre él
-        return Mono.just(events.foldLeft(initialState, (state, event) -> {
+        Mono.just(events.foldLeft(initialState, (state, event) ->
             // Dispatcher por tipo de evento
-            return switch (event.get("eventType").toString()) {
+            switch (getValue(event, "type", "")) {
                 case "FranchiseCreated" -> state.put("franchiseId", event.get("aggregateId").get().toString())
                         .put("franchiseName", getValue(event, "payload.franchiseName", "")) //event.get("payload").get("franchiseName"))
                         .put("franchiseExists", true); // Marca que la franquicia existe
@@ -167,16 +167,298 @@ public class CommandController {
                         .put("currentStock", getValue(event, "payload.newStock", 0)); //event.get("payload").get("newStock"));
 
                 default -> state; // Si no se reconoce el evento, se devuelve el estado tal como está.
-            };
-        }));
-    }
-
+            }
+        )
+    );
 
     // Función para tomar decisiones de negocio
-    private Mono<Map<String, Serializable>> decide(Map<String, Serializable> commandMap) {
-        // Toma de decisiones según el estado y el comando
-        return Mono.just(commandMap);  // Simulación de generación de eventos
+    private Mono<List<Map<String, Object>>> decide(Map<String, Serializable> command, Map<String, Serializable> state) {
+        // Dispatcher por tipo de comando
+        return Mono.justOrEmpty(command.get("type").toString())
+                .flatMap(commandType -> switch (commandType) {
+                    case "CreateFranchise" -> {
+                        // Validación: No se puede crear una franquicia si ya existe
+                        if (state.getOrElse("franchiseExists", false)) {
+                            yield Mono.error(new IllegalStateException("La franquicia ya existe."));
+                        } else {
+                            yield Mono.just(List.of(io.vavr.collection.HashMap.of(
+                                    "eventType", "FranchiseCreated",
+                                    "aggregateId", command.get("franchiseId"),
+                                    "payload", io.vavr.collection.HashMap.of(
+                                            "franchiseName", command.get("franchiseName")
+                                    )
+                            )));
+                        }
+                    }
+
+                    case "UpdateFranchiseName" -> {
+                        // Validación: La franquicia debe existir
+                        if (!state.getOrElse("franchiseExists", false)) {
+                            yield Mono.error(new IllegalStateException("La franquicia no existe."));
+                        } else {
+                            yield Mono.just(List.of(io.vavr.collection.HashMap.of(
+                                    "eventType", "FranchiseNameUpdated",
+                                    "aggregateId", command.get("franchiseId"),
+                                    "payload", io.vavr.collection.HashMap.of(
+                                            "newFranchiseName", command.get("newName"),
+                                            "oldFranchiseName", state.get("franchiseName")
+                                    )
+                            )));
+                        }
+                    }
+
+                    case "AddBranch" -> {
+                        // Validación: La franquicia debe existir
+                        if (!state.getOrElse("franchiseExists", false)) {
+                            yield Mono.error(new IllegalStateException("La franquicia no existe."));
+                        } else {
+                            // Validación: No se puede agregar una sucursal que ya existe
+                            Map<String, Serializable> branches = state.getOrElse("branches", io.vavr.collection.HashMap.empty());
+                            if (branches.containsKey(command.get("branchId").toString())) {
+                                yield Mono.error(new IllegalStateException("La sucursal ya existe en la franquicia."));
+                            } else {
+                                yield Mono.just(List.of(io.vavr.collection.HashMap.of(
+                                        "eventType", "BranchAdded",
+                                        "aggregateId", command.get("franchiseId"),
+                                        "payload", io.vavr.collection.HashMap.of(
+                                                "branchId", command.get("branchId"),
+                                                "branchName", command.get("branchName")
+                                        )
+                                )));
+                            }
+                        }
+                    }
+
+                    case "UpdateBranchName" -> {
+                        // Validación: La sucursal debe existir
+                        Map<String, Serializable> branches = state.getOrElse("branches", io.vavr.collection.HashMap.empty());
+                        if (!branches.containsKey(command.get("branchId").toString())) {
+                            yield Mono.error(new IllegalStateException("La sucursal no existe."));
+                        } else {
+                            String oldBranchName = branches.get(command.get("branchId").toString()).toString();
+                            yield Mono.just(List.of(io.vavr.collection.HashMap.of(
+                                    "eventType", "BranchNameUpdated",
+                                    "aggregateId", command.get("franchiseId"),
+                                    "payload", io.vavr.collection.HashMap.of(
+                                            "branchId", command.get("branchId"),
+                                            "newBranchName", command.get("newName"),
+                                            "oldBranchName", oldBranchName
+                                    )
+                            )));
+                        }
+                    }
+
+                    case "AddProductToBranch" -> {
+                        // Validación: La sucursal debe existir
+                        Map<String, Map<String, Serializable>> branches = state.getOrElse("branches", io.vavr.collection.HashMap.empty());
+                        if (!branches.containsKey(command.get("branchId").toString())) {
+                            yield Mono.error(new IllegalStateException("La sucursal no existe."));
+                        } else {
+                            Map<String, Serializable> products = branches.get(command.get("branchId").toString()).getOrElse(io.vavr.collection.HashMap.empty());
+                            if (products.containsKey(command.get("productId").toString())) {
+                                yield Mono.error(new IllegalStateException("El producto ya existe en la sucursal."));
+                            } else {
+                                yield Mono.just(List.of(io.vavr.collection.HashMap.of(
+                                        "eventType", "ProductAddedToBranch",
+                                        "aggregateId", command.get("franchiseId"),
+                                        "payload", io.vavr.collection.HashMap.of(
+                                                "branchId", command.get("branchId"),
+                                                "productId", command.get("productId"),
+                                                "productName", command.get("productName"),
+                                                "initialStock", command.get("initialStock")
+                                        )
+                                )));
+                            }
+                        }
+                    }
+
+                    case "UpdateProductStock" -> {
+                        // Validación: La sucursal y el producto deben existir
+                        Map<String, Map<String, Serializable>> branches = state.getOrElse("branches", io.vavr.collection.HashMap.empty());
+                        if (!branches.containsKey(command.get("branchId").toString())) {
+                            yield Mono.error(new IllegalStateException("La sucursal no existe."));
+                        } else {
+                            Map<String, Serializable> products = branches.get(command.get("branchId").toString()).getOrElse(io.vavr.collection.HashMap.empty());
+                            if (!products.containsKey(command.get("productId").toString())) {
+                                yield Mono.error(new IllegalStateException("El producto no existe en la sucursal."));
+                            } else {
+                                int currentStock = Integer.parseInt(products.get(command.get("productId").toString()).toString());
+                                int quantityChange = Integer.parseInt(command.get("quantityChange").toString());
+                                int newStock = currentStock + quantityChange;
+
+                                // Validación: El stock resultante no puede ser negativo
+                                if (newStock < 0) {
+                                    yield Mono.error(new IllegalStateException("El stock resultante no puede ser negativo."));
+                                } else {
+                                    yield Mono.just(List.of(io.vavr.collection.HashMap.of(
+                                            "eventType", "ProductStockUpdated",
+                                            "aggregateId", command.get("franchiseId"),
+                                            "payload", io.vavr.collection.HashMap.of(
+                                                    "branchId", command.get("branchId"),
+                                                    "productId", command.get("productId"),
+                                                    "quantityChange", quantityChange
+                                            )
+                                    )));
+                                }
+                            }
+                        }
+                    }
+
+                    case "TransferProductBetweenBranches" -> {
+                        // Validación: Ambas sucursales deben existir
+                        Map<String, Map<String, Serializable>> branches = state.getOrElse("branches", io.vavr.collection.HashMap.empty());
+                        if (!branches.containsKey(command.get("fromBranchId").toString()) || !branches.containsKey(command.get("toBranchId").toString())) {
+                            yield Mono.error(new IllegalStateException("Una o ambas sucursales no existen."));
+                        } else {
+                            Map<String, Serializable> fromProducts = branches.get(command.get("fromBranchId").toString()).getOrElse(io.vavr.collection.HashMap.empty());
+                            Map<String, Serializable> toProducts = branches.get(command.get("toBranchId").toString()).getOrElse(io.vavr.collection.HashMap.empty());
+
+                            if (!fromProducts.containsKey(command.get("productId").toString())) {
+                                yield Mono.error(new IllegalStateException("El producto no existe en la sucursal de origen."));
+                            } else {
+                                int currentStock = Integer.parseInt(fromProducts.get(command.get("productId").toString()).toString());
+                                int quantity = Integer.parseInt(command.get("quantity").toString());
+
+                                if (quantity > currentStock) {
+                                    yield Mono.error(new IllegalStateException("Stock insuficiente en la sucursal de origen."));
+                                } else {
+                                    yield Mono.just(List.of(io.vavr.collection.HashMap.of(
+                                            "eventType", "ProductTransferredBetweenBranches",
+                                            "aggregateId", command.get("franchiseId"),
+                                            "payload", io.vavr.collection.HashMap.of(
+                                                    "fromBranchId", command.get("fromBranchId"),
+                                                    "toBranchId", command.get("toBranchId"),
+                                                    "productId", command.get("productId"),
+                                                    "quantity", quantity
+                                            )
+                                    )));
+                                }
+                            }
+                        }
+                    }
+
+                    case "RemoveProductFromBranch" -> {
+                        // Validación: La sucursal y el producto deben existir
+                        Map<String, Map<String, Serializable>> branches = state.getOrElse("branches", io.vavr.collection.HashMap.empty());
+                        if (!branches.containsKey(command.get("branchId").toString())) {
+                            yield Mono.error(new IllegalStateException("La sucursal no existe."));
+                        } else {
+                            Map<String, Serializable> products = branches.get(command.get("branchId").toString()).getOrElse(io.vavr.collection.HashMap.empty());
+                            if (!products.containsKey(command.get("productId").toString())) {
+                                yield Mono.error(new IllegalStateException("El producto no existe en la sucursal."));
+                            } else {
+                                yield Mono.just(List.of(io.vavr.collection.HashMap.of(
+                                        "eventType", "ProductRemovedFromBranch",
+                                        "aggregateId", command.get("franchiseId"),
+                                        "payload", io.vavr.collection.HashMap.of(
+                                                "branchId", command.get("branchId"),
+                                                "productId", command.get("productId")
+                                        )
+                                )));
+                            }
+                        }
+                    }
+
+                    case "RemoveBranch" -> {
+                        // Validación: La sucursal debe existir y no tener productos asociados
+                        Map<String, Map<String, Serializable>> branches = state.getOrElse("branches", io.vavr.collection.HashMap.empty());
+                        if (!branches.containsKey(command.get("branchId").toString())) {
+                            yield Mono.error(new IllegalStateException("La sucursal no existe."));
+                        } else {
+                            Map<String, Serializable> products = branches.get(command.get("branchId").toString()).getOrElse(io.vavr.collection.HashMap.empty());
+                            if (!products.isEmpty()) {
+                                yield Mono.error(new IllegalStateException("La sucursal tiene productos asociados y no puede ser eliminada."));
+                            } else {
+                                yield Mono.just(List.of(io.vavr.collection.HashMap.of(
+                                        "eventType", "BranchRemoved",
+                                        "aggregateId", command.get("franchiseId"),
+                                        "payload", io.vavr.collection.HashMap.of(
+                                                "branchId", command.get("branchId")
+                                        )
+                                )));
+                            }
+                        }
+                    }
+
+                    case "RemoveFranchise" -> {
+                        // Validación: La franquicia debe existir y no tener sucursales activas
+                        if (!state.getOrElse("franchiseExists", false)) {
+                            yield Mono.error(new IllegalStateException("La franquicia no existe."));
+                        } else {
+                            Map<String, Map<String, Serializable>> branches = state.getOrElse("branches", io.vavr.collection.HashMap.empty());
+                            if (!branches.isEmpty()) {
+                                yield Mono.error(new IllegalStateException("La franquicia tiene sucursales activas y no puede ser eliminada."));
+                            } else {
+                                yield Mono.just(List.of(io.vavr.collection.HashMap.of(
+                                        "eventType", "FranchiseRemoved",
+                                        "aggregateId", command.get("franchiseId"),
+                                        "payload", io.vavr.collection.HashMap.empty()
+                                )));
+                            }
+                        }
+                    }
+
+                    case "AdjustProductStock" -> {
+                        // Validación: La sucursal y el producto deben existir
+                        Map<String, Map<String, Serializable>> branches = state.getOrElse("branches", io.vavr.collection.HashMap.empty());
+                        if (!branches.containsKey(command.get("branchId").toString())) {
+                            yield Mono.error(new IllegalStateException("La sucursal no existe."));
+                        } else {
+                            Map<String, Serializable> products = branches.get(command.get("branchId").toString()).getOrElse(io.vavr.collection.HashMap.empty());
+                            if (!products.containsKey(command.get("productId").toString())) {
+                                yield Mono.error(new IllegalStateException("El producto no existe en la sucursal."));
+                            } else {
+                                int newStock = Integer.parseInt(command.get("newStock").toString());
+                                // Validación: El nuevo stock no puede ser negativo
+                                if (newStock < 0) {
+                                    yield Mono.error(new IllegalStateException("El nuevo stock no puede ser negativo."));
+                                } else {
+                                    yield Mono.just(List.of(io.vavr.collection.HashMap.of(
+                                            "eventType", "ProductStockAdjusted",
+                                            "aggregateId", command.get("franchiseId"),
+                                            "payload", io.vavr.collection.HashMap.of(
+                                                    "branchId", command.get("branchId"),
+                                                    "productId", command.get("productId"),
+                                                    "newStock", newStock
+                                            )
+                                    )));
+                                }
+                            }
+                        }
+                    }
+
+                    case "NotifyStockDepleted" -> {
+                        // Validación: El producto debe existir y su stock debe ser cero
+                        Map<String, Map<String, Serializable>> branches = state.getOrElse("branches", io.vavr.collection.HashMap.empty());
+                        if (!branches.containsKey(command.get("branchId").toString())) {
+                            yield Mono.error(new IllegalStateException("La sucursal no existe."));
+                        } else {
+                            Map<String, Serializable> products = branches.get(command.get("branchId").toString()).getOrElse(io.vavr.collection.HashMap.empty());
+                            if (!products.containsKey(command.get("productId").toString())) {
+                                yield Mono.error(new IllegalStateException("El producto no existe en la sucursal."));
+                            } else {
+                                int currentStock = Integer.parseInt(products.get(command.get("productId").toString()).toString());
+                                if (currentStock > 0) {
+                                    yield Mono.error(new IllegalStateException("El stock del producto aún no está agotado."));
+                                } else {
+                                    yield Mono.just(List.of(io.vavr.collection.HashMap.of(
+                                            "eventType", "NotifyStockDepleted",
+                                            "aggregateId", command.get("franchiseId"),
+                                            "payload", io.vavr.collection.HashMap.of(
+                                                    "branchId", command.get("branchId"),
+                                                    "productId", command.get("productId")
+                                            )
+                                    )));
+                                }
+                            }
+                        }
+                    }
+
+                    default -> Mono.error(new IllegalArgumentException("Comando no reconocido."));
+                });
     }
+
+
 
 
 
