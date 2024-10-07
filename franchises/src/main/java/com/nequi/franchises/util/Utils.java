@@ -37,11 +37,11 @@ public class Utils {
 
     // Función para cargar eventos desde el event store
     public static Function1<Function1<String, List<Map<String, Object>>>, Step> downloadEvents = fetchEvents -> command ->
-        "CreateFranchise".equals(command.getOrElse("type", "").toString())
+        "CreateFranchise1".equals(command.getOrElse("type", "").toString())
             ? Mono.just(HashMap.of("command", command, "events", List.empty()))
             : Mono.fromCallable(() -> fetchEvents.apply(command.getOrElse("aggregateId", "").toString()))
             .map(events -> buildResult(command, events))
-            .onErrorResume(e -> Mono.error(new RuntimeException("Error loading events for aggregateId: " + command.getOrElse("aggregateId", "").toString(), e)));
+            .onErrorResume(e -> Mono.error(new RuntimeException("Error loading events for command: %s | %s".formatted(command, e))));
 
     @NotNull
     private static Map<String, Serializable> buildResult(Map<String, Serializable> command, List<Map<String, Object>> events) {

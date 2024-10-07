@@ -38,13 +38,13 @@ public class EventStoreFactory {
                     .map(item -> HashMap.of(
                             "aggregateId", item.get("aggregateId").s(),
                             "sortKey", item.get("sortKey").s(),
-                            "eventType", item.get("eventType").s(),
+                            "type", item.get("type").s(),
                             "version", item.get("version").n(),
                             "timestamp", item.get("timestamp").s(),
                             // Mapea el payload como un JSON o HashMap dependiendo de la estructura
-                            "payload", parsePayload(item.get("payload").s()),
+                            "payload", HashMap.ofAll(item.get("payload").m()).mapValues(AttributeValue::s),
                             // Metadata también puede ser otro HashMap dependiendo de la estructura
-                            "metadata", parsePayload(item.get("metadata").s())
+                            "metadata", HashMap.ofAll(item.get("metadata").m()).mapValues(AttributeValue::s)
                     ));
         };
     }
