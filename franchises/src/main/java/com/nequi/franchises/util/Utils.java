@@ -45,7 +45,7 @@ public class Utils {
 
     // Función para cargar eventos desde el event store
     public static Function1<Function1<String, List<Map<String, Object>>>, Step> downloadEvents = fetchEvents -> command ->
-        "CreateFranchise1".equals(command.getOrElse("type", "").toString())
+        "CreateFranchise".equals(command.getOrElse("type", "").toString())
             ? Mono.just(HashMap.of("command", command, "events", List.empty()))
             : Mono.fromCallable(() -> fetchEvents.apply(command.getOrElse("aggregateId", "").toString()))
             .map(events -> buildResult(command, events))
@@ -70,7 +70,14 @@ public class Utils {
     public static Map<String, Step> createEventLoader() {
         var deps = HashMap.of(
             "fetchEvents", Utils.downloadEvents.apply(fetchEventsFromDynamo()),
-            "fetchEventsTest", map -> Mono.just(HashMap.of("command", HashMap.empty(), "events", List.empty())),
+            "fetchEventsTest", map -> Mono.just(HashMap.of(
+            "command",
+                    HashMap.of("aggregateId", "123e4567-e89b-12d3-a456-426614174000")
+                        .put("type", "CreateFranchise")
+                        .put("franchiseId", "STB123")
+                        .put("franchiseName", "Starbucks"),
+            "events",
+                    List.empty())),
             "saveEvents", Utils.persistEvents.apply(saveEventsStrongly()),
             "saveEventsTest", map -> Mono.just(HashMap.of("command", HashMap.empty(), "events", List.empty()))
         );
