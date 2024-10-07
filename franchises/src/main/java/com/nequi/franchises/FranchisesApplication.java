@@ -6,8 +6,6 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 import java.util.stream.Collectors;
 
-import static com.nequi.franchises.IO.EventStoreFactory.sessionProvider;
-
 @SpringBootApplication
 public class FranchisesApplication {
 
@@ -15,6 +13,9 @@ public class FranchisesApplication {
 		Dotenv dotenv = Dotenv.load();  // Cargar las variables del archivo .env
 		var result = dotenv.entries().stream().peek(entry -> System.setProperty(entry.getKey(), entry.getValue())).collect(Collectors.toList());
 		System.out.println(result);
+
+
+
 		SpringApplication.run(FranchisesApplication.class, args);
 	}
 

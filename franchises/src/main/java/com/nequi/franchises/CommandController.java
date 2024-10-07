@@ -3,6 +3,11 @@ package com.nequi.franchises;
 import com.nequi.franchises.comands.Command;
 import com.nequi.franchises.comands.ValidationResult;
 import com.nequi.franchises.IO.EventStoreFactory;
+import com.nequi.franchises.util.Step;
+import com.nequi.franchises.util.Utils;
+import io.vavr.Function0;
+import io.vavr.Function1;
+import io.vavr.Function2;
 import io.vavr.collection.HashMap;
 import io.vavr.collection.List;
 
@@ -21,7 +26,7 @@ import static com.nequi.franchises.comands.Validators.*;
 public class CommandController {
 
     // Inyectamos la función del eventLoader usando la fábrica
-    private final Function<String, List<Map<String, Object>>> eventLoader = EventStoreFactory.createEventLoader("ENVIRONMENT", property -> Option.of(System.getProperty(property)).getOrElse(""));
+    private final Map<String, Step> eventLoader = Utils.createEventLoader("ENVIRONMENT", property -> Option.of(System.getProperty(property)).getOrElse(""));
 
     @PostMapping("/command")
     public Mono<ResponseEntity<Map<String, Serializable>>> handleCommand(@RequestBody Map<String, Serializable> commandMap) {
@@ -34,7 +39,7 @@ public class CommandController {
     private Function<Map<String, Serializable>, Mono<Map<String, Serializable>>> createCommandHandler() {
         return commandMap -> Mono.just(commandMap)
                 .flatMap(this::validateCommand)    // Validación del comando
-                .flatMap(this::downloadEvents);         // Carga de eventos del event store
+                .flatMap(eventLoader.get("fetchEvents").get());         // Carga de eventos del event store
 //                .flatMap(this::projectState)       // Proyección del estado a partir de los eventos
 //                .flatMap(this::decide)             // Toma de decisiones de negocio
 //                .flatMap(this::persistEvents)      // Persistencia de los eventos generados
@@ -108,14 +113,7 @@ public class CommandController {
                 : Mono.error(new IllegalArgumentException("Validation failed: " + result.errors().mkString(", ")))); // Si no es válido, devolver un Mono.error con los errores de validación)
     }
 
-    // Función para cargar eventos desde el event store
-    private Mono<HashMap<String, Serializable>> downloadEvents(Map<String, Serializable> command) {
-        return "CreateFranchise".equals(command.getOrElse("type", "").toString())
-            ? Mono.just(HashMap.<String, Serializable>of("command", command, "events", List.empty()))
-            : Mono.fromCallable(() -> eventLoader.apply(command.getOrElse("aggregateId", "").toString()))
-            .map(events -> HashMap.<String, Serializable>of("command", command, "events", events))
-        .onErrorResume(e -> Mono.error(new RuntimeException("Error loading events for aggregateId: " + command.getOrElse("aggregateId", "").toString(), e)));
-    }
+
 
     // Función para proyectar el estado actual
     private Mono<Map<String, Serializable>> projectState(Map<String, Serializable> commandMap) {
@@ -129,11 +127,7 @@ public class CommandController {
         return Mono.just(commandMap);  // Simulación de generación de eventos
     }
 
-    // Función para persistir los eventos generados
-    private Mono<Map<String, Serializable>> persistEvents(Map<String, Serializable> events) {
-        // Persistencia en Cassandra
-        return Mono.just(events);  // Simulación de persistencia
-    }
+
 
     // Función para notificar eventos a sistemas externos
     private Mono<Map<String, Serializable>> notifyEvents(Map<String, Serializable> events) {

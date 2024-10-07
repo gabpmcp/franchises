@@ -1,0 +1,3 @@
+dynamodb:
+  endpoint: ${DYNAMODB_ENDPOINT:http://localhost:8000}  # DynamoDB Local por defecto
+  region: ${AWS_REGION:us-east-1}

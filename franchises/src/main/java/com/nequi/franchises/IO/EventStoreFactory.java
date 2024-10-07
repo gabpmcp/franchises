@@ -1,47 +1,83 @@
 package com.nequi.franchises.IO;
 
-import com.datastax.oss.driver.api.core.CqlSession;
-import io.vavr.Function0;
 import io.vavr.Function1;
-import io.vavr.Function3;
+import io.vavr.Function2;
 import io.vavr.collection.HashMap;
 import io.vavr.collection.List;
 import io.vavr.collection.Map;
-import org.apache.logging.log4j.util.Strings;
+import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
+import software.amazon.awssdk.services.dynamodb.model.*;
 
-import java.net.InetSocketAddress;
+import static com.nequi.franchises.util.Utils.parsePayload;
+
 
 public class EventStoreFactory {
 
-    // Función memoizada para crear la conexión a Cassandra
-    public static Function3<String, Integer, String, CqlSession> sessionProvider = Function3.of((String host, Integer port, String datacenter) ->
-        CqlSession.builder()
-            .addContactPoint(new InetSocketAddress(host, port)) // Dirección de Cassandra
-            .withLocalDatacenter(datacenter)  // Nombre del datacenter
-            .build()).memoized();
+    // DynamoDB client creation (can be injected or passed by HOF)
+    private static final DynamoDbClient dynamoDbClient = DynamoDbClient.builder().build(); // Ideally passed as dependency
 
-    public static CqlSession getSession = sessionProvider.apply(System.getProperty("HOST"), Integer.parseInt(System.getProperty("PORT")), System.getProperty("CASSANDRA_DATACENTER"));
+    // Función sin argumentos que retorna una Function1
+    public static Function1<String, List<Map<String, Object>>> fetchEventsFromDynamo() {
+        return aggregateId -> {
+            // Configurar la solicitud de consulta a DynamoDB (ajusta los nombres de tablas y atributos según tu diseño)
+            QueryRequest queryRequest = QueryRequest.builder()
+                    .tableName("Events") // Nombre de la tabla en DynamoDB
+                    .keyConditionExpression("aggregateId = :aggregateId")
+                    .expressionAttributeValues(HashMap.of(":aggregateId", AttributeValue.builder().s(aggregateId).build()).toJavaMap())
+                    .consistentRead(true)
+                    .build();
 
-    // Esta función retorna la implementación de eventLoader según el entorno
-    public static Function1<String, List<Map<String, Object>>> createEventLoader(String property, Function1<String, String> getEnvironment) {
-        String environment = getEnvironment.apply(property); // Obtener el entorno de la variable de entorno
+            // Ejecutar la consulta en DynamoDB
+            QueryResponse response = dynamoDbClient.query(queryRequest);
 
-        return switch (Strings.isNotBlank(environment) ? environment : "default") {
-            case "prod" -> EventStoreFactory::fetchEventsFromCassandra;
-            case "dev" -> aggregateId -> List.of( // Simulación para desarrollo
-                    HashMap.of("eventType", "FranchiseCreated", "aggregateId", aggregateId),
-                    HashMap.of("eventType", "BranchAdded", "branchId", "456", "franchiseId", "STB", "aggregateId", aggregateId)
-            );
-            default -> aggregateId -> List.empty(); // Entorno por defecto o en caso de que falte la variable
+            // Convertir los resultados de DynamoDB a la estructura de eventos esperada
+            return List.ofAll(response.items().stream())
+                    .map(item -> HashMap.of(
+                            "aggregateId", item.get("aggregateId").s(),
+                            "sortKey", item.get("sortKey").s(),
+                            "eventType", item.get("eventType").s(),
+                            "version", item.get("version").n(),
+                            "timestamp", item.get("timestamp").s(),
+                            // Mapea el payload como un JSON o HashMap dependiendo de la estructura
+                            "payload", parsePayload(item.get("payload").s()),
+                            // Metadata también puede ser otro HashMap dependiendo de la estructura
+                            "metadata", parsePayload(item.get("metadata").s())
+                    ));
         };
     }
 
-    // Función que interactúa con Cassandra para obtener eventos según el franchiseId
-    public static List<Map<String, Object>> fetchEventsFromCassandra(String aggregateId) {
-        // Aquí iría la lógica real para obtener los eventos desde Cassandra, sin depender de Reactor
-        return List.of(
-                HashMap.of("eventType", "FranchiseCreated", "franchiseId", "STB", "aggregateId", aggregateId),
-                HashMap.of("eventType", "BranchAdded", "branchId", "123", "franchiseId", "STB", "aggregateId", aggregateId)
+    // Función sin argumentos que retorna una Function2
+    public static Function2<List<Map<String, Object>>, String, List<Map<String, Object>>> saveEventsStrongly() {
+        return (events, aggregateId) -> {
+            List<TransactWriteItem> transactWriteItems = events
+                    .map(event -> createTransactWriteItem(aggregateId, event));
+
+            TransactWriteItemsRequest transactRequest = TransactWriteItemsRequest.builder()
+                    .transactItems(transactWriteItems.asJava())
+                    .build();
+
+            dynamoDbClient.transactWriteItems(transactRequest);  // Esto asegura que las operaciones son ACID
+
+            return events;
+        };
+    }
+
+    private static TransactWriteItem createTransactWriteItem(String aggregateId, Map<String, Object> event) {
+        Put put = Put.builder()
+                .tableName("Events")
+                .item(createPutRequest(aggregateId, event).toJavaMap())
+                .build();
+        return TransactWriteItem.builder().put(put).build();
+    }
+
+    // Función auxiliar para crear una solicitud de PutItem para cada evento
+    private static Map<String, AttributeValue> createPutRequest(String aggregateId, Map<String, Object> event) {
+        return io.vavr.collection.HashMap.of(
+                "aggregateId", AttributeValue.builder().s(aggregateId).build(),
+                "sortKey", AttributeValue.builder().s(event.get("sortKey").toString()).build(),
+                "eventType", AttributeValue.builder().s(event.get("eventType").toString()).build(),
+                "version", AttributeValue.builder().n(event.get("version").toString()).build(),
+                "eventData", AttributeValue.builder().s(event.get("eventData").toString()).build() // Suponiendo que los datos están serializados en JSON
         );
     }
 }

@@ -3,17 +3,13 @@ package com.nequi.franchises.config;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.vavr.jackson.datatype.VavrModule;
 import org.springframework.context.annotation.Configuration;
-
-import org.springframework.context.annotation.Bean;
+import io.vavr.Function0;
 
 @Configuration
 public class SerializerConfig {
 
-    @Bean
-    public ObjectMapper objectMapper() {
-        ObjectMapper mapper = new ObjectMapper();
-        // Registrar el módulo de Vavr
-        mapper.registerModule(new VavrModule());
-        return mapper;
-    }
+    // Función memoizada que actúa como Singleton
+    private static final Function0<ObjectMapper> getObjectMapper = Function0.of(() -> new ObjectMapper().registerModule(new VavrModule())).memoized();
+
+    public static ObjectMapper mapper = getObjectMapper.apply();
 }
