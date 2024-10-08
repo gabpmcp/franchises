@@ -1,7 +1,5 @@
 package com.nequi.franchises.util;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.nequi.franchises.config.SerializerConfig;
 import io.vavr.Function1;
 import io.vavr.Function2;
 import io.vavr.collection.HashMap;
@@ -13,9 +11,10 @@ import org.jetbrains.annotations.NotNull;
 import reactor.core.publisher.Mono;
 
 import java.io.Serializable;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 
-import static com.nequi.franchises.IO.EventStoreFactory.fetchEventsFromDynamo;
-import static com.nequi.franchises.IO.EventStoreFactory.saveEventsStrongly;
+import static com.nequi.franchises.IO.EventStoreFactory.*;
 
 public class Utils {
     @SuppressWarnings("unchecked")
@@ -46,8 +45,8 @@ public class Utils {
     // Función para cargar eventos desde el event store
     public static Function1<Function1<String, List<Map<String, Object>>>, Step> downloadEvents = fetchEvents -> command ->
         "CreateFranchise".equals(command.getOrElse("type", "").toString())
-            ? Mono.just(HashMap.of("command", command, "events", List.empty()))
-            : Mono.fromCallable(() -> fetchEvents.apply(command.getOrElse("aggregateId", "").toString()))
+            ? Mono.just(buildResult(command, List.empty()))
+            : Mono.fromCallable(() -> fetchEvents.apply(getValue(command, "aggregateId", "")))
             .map(events -> buildResult(command, events))
             .onErrorResume(e -> Mono.error(new RuntimeException("Error loading events for command: %s | %s".formatted(command, e))));
 
@@ -60,16 +59,37 @@ public class Utils {
     public static Function1<Function2<List<Map<String, Serializable>>, String, List<Map<String, Serializable>>>, Step> persistEvents = saveEvents -> result -> {
         // Persistencia en DynamoDB
         var events = getValue(result, "events", List.<Map<String, Serializable>>empty());
-        var aggregateId = getValue(result,"command.aggregateId", "");
+        var aggregateId = getValue(events.get(),"aggregateId", "");
         saveEvents.apply(events, aggregateId);
         return Mono.just(result);
     };
-        
+
+    public static String generateContentHash(String content) {
+        return Try.of(() -> {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            return digest.digest(content.getBytes(StandardCharsets.UTF_8));
+        }).map(hash -> {
+            StringBuilder hexString = new StringBuilder(hash.length * 2);
+            for (byte b : hash) hexString.append(String.format("%02x", b));
+            return hexString.toString();
+        }).getOrElseThrow(e -> new RuntimeException("Error generating hash", e));
+    }
+
+    // Función para verificar idempotencia
+    private static final Function1<Function1<String, Boolean>, Step> checkIdempotency = checkIfHashExists -> command -> {
+        String commandContent = command.toString(); // Convertir el contenido del comando a String
+        String hash = generateContentHash(commandContent); // Generar el hash del contenido
+
+        return Mono.just(checkIfHashExists.apply(hash))
+                .flatMap(exists -> exists
+                    ? Mono.error(new IllegalArgumentException("Idempotent request %s    , already processed".formatted(commandContent)))
+                    : Mono.just(command.put("aggregateId", hash))); // Continuar si no fue procesado
+    };
 
     // Esta función retorna la implementación de eventLoader según el entorno
     public static Map<String, Step> createEventLoader() {
-        var deps = HashMap.of(
-            "fetchEvents", Utils.downloadEvents.apply(fetchEventsFromDynamo()),
+        return HashMap.of(
+            "fetchEvents", downloadEvents.apply(fetchEventsFromDynamo()),
             "fetchEventsTest", map -> Mono.just(HashMap.of(
             "command",
                     HashMap.of("aggregateId", "123e4567-e89b-12d3-a456-426614174000")
@@ -78,25 +98,9 @@ public class Utils {
                         .put("franchiseName", "Starbucks"),
             "events",
                     List.empty())),
-            "saveEvents", Utils.persistEvents.apply(saveEventsStrongly()),
-            "saveEventsTest", map -> Mono.just(HashMap.of("command", HashMap.empty(), "events", List.empty()))
+            "saveEvents", persistEvents.apply(saveEventsStrongly()),
+            "saveEventsTest", map -> Mono.just(HashMap.of("command", HashMap.empty(), "events", List.empty())),
+            "checkIdempotency", checkIdempotency.apply(checkIfHashExistsInDynamo())
         );
-
-        return deps;
     }
-
-//    public static Option<Object> getNestedValue(Map<String, Object> map, String path) {
-//        return Option.of(path.split("\\."))
-//                .flatMap(keys -> traverse(map, keys, 0));
-//    }
-//
-//    @SuppressWarnings("unchecked")
-//    private static Option<Object> traverse(Map<String, Object> map, String[] keys, int index) {
-//        return index == keys.length
-//                ? Option.none()
-//                : map.get(keys[index])
-//                .flatMap(v -> (index == keys.length - 1)
-//                        ? Option.of(v)
-//                        : Option.of(v).flatMap(subMap -> traverse((Map<String, Object>) subMap, keys, index + 1)));
-//    }
 }
