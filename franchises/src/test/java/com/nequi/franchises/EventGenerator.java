@@ -68,7 +68,6 @@ public class EventGenerator implements WithQuickTheories {
 
                     // Simula la aplicación de eventos en el estado
                     Mono<Map<String, Serializable>> projectedState = projectState.apply(
-                            io.vavr.collection.HashMap.of("type", "CreateFranchise", "franchiseId", event1.get("franchiseId")), // Comando inicial
                             initialState,
                             List.of(event2) // Lista de eventos generados
                     );

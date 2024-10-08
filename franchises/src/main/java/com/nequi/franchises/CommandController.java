@@ -28,7 +28,7 @@ public class CommandController {
     // Inyectamos la función del eventLoader usando la fábrica
     private final Map<String, Step> depsLoader = Utils.createEventLoader();
     private static final Function2<String, String, List<Map<String, Serializable>>> initStateMachine = (franchiseId, franchiseName) ->
-        List.of(HashMap.of("aggregateId", UUID.randomUUID(), "type", "FranchiseCreated", "payload", HashMap.of("franchiseId", franchiseId, "franchiseName", franchiseName)));
+        List.of(HashMap.of("aggregateId", UUID.randomUUID(), "type", "FranchiseCreated", "payload", HashMap.of("franchiseId", franchiseId, "franchiseName", franchiseName, "version", 1)));
 
     @PostMapping("/command")
     public Mono<ResponseEntity<Map<String, Serializable>>> handleCommand(@RequestBody java.util.Map<String, Serializable> commandMap) {
@@ -41,13 +41,11 @@ public class CommandController {
     private Function<Map<String, Serializable>, Mono<Map<String, Serializable>>> createCommandHandler() {
         return command -> Mono.just(command)
             .flatMap(this::validateCommand)    // Validación del comando
+            .flatMap(depsLoader.get("checkIdempotency").get())
             // Carga de eventos del event store
             .flatMap(depsLoader.get("fetchEvents").get())
             // Proyección del estado a partir de los eventos
-            .flatMap(result -> {
-                Function1<List<Map<String, Serializable>>, Mono<Map<String, Serializable>>> projectionPrepared = projectState.apply(getValue(result, "command", HashMap.empty()), HashMap.empty());
-                return projectionPrepared.apply(getValue(result, "events", List.empty()));
-            })
+            .flatMap(result -> projectState.apply(HashMap.of("aggregateId", getValue(result, "command.aggregateId", "")) , getValue(result, "events", List.empty())))
             .flatMap(state -> decide(command, state))             // Toma de decisiones de negocio
             .flatMap(events -> depsLoader.get("saveEvents").get().apply(HashMap.of("command", command, "events", events)));     // Persistencia de los eventos generados
 //                .flatMap(this::notifyEvents);      // Notificación de eventos externos
@@ -120,16 +118,14 @@ public class CommandController {
                 : Mono.error(new IllegalArgumentException("Validation failed: " + result.errors().mkString(", ")))); // Si no es válido, devolver un Mono.error con los errores de validación)
     }
 
-    public static Function3<Map<String, Serializable>, Map<String, Serializable>, List<Map<String, Serializable>>, Mono<Map<String, Serializable>>> projectState = (command, initialState, events) ->
-        Mono.defer(() -> ("CreateFranchise".equals(getValue(command, "type", "")) && events.isEmpty()
-                        ? Mono.just(initStateMachine.apply(getValue(command, "franchiseId", ""), getValue(command, "franchiseName", "")))
-                        : Mono.just(events)))
-        .flatMap(evts -> Mono.just(evts.foldLeft(initialState, (state, event) ->
+    public static Function2<Map<String, Serializable>, List<Map<String, Serializable>>, Mono<Map<String, Serializable>>> projectState = (initialState, events) ->
+        Mono.defer(() -> Mono.just(events.foldLeft(initialState, (state, event) ->
             switch (getValue(event, "type", "")) {
                 case "FranchiseCreated" -> state
-                        .put("franchiseExists", events.exists(e -> e.containsValue("FranchiseCreated")))
-                        .put("franchiseId", getValue(event, "franchiseId", ""))
-                        .put("franchiseName", getValue(getValue(event, "payload", HashMap.empty()), "franchiseName", ""))
+                        .put("aggregateId", getValue(event, "aggregateId", ""))
+                        .put("franchiseExists", true)
+                        .put("franchiseId", getValue(event, "payload.franchiseId", ""))
+                        .put("franchiseName", getValue(event, "payload.franchiseName", ""))
                         .put("branches", HashMap.empty());
 
                 case "FranchiseNameUpdated" -> state.put("franchiseName", getValue(getValue(event, "payload", HashMap.empty()), "newFranchiseName", ""));
@@ -183,8 +179,7 @@ public class CommandController {
                 case "NotifyStockDepleted" -> state;
 
                 default -> state;
-            })
-        ));
+            })));
 
 
     // Función auxiliar para obtener el mapa de sucursales (branches)
@@ -232,12 +227,13 @@ public class CommandController {
                         } else {
                             yield Mono.just(List.of(HashMap.of(
                                     "type", "FranchiseCreated",
-                                    "aggregateId", getValue(command, "aggregateId", ""),
+                                    "aggregateId", getValue(state, "aggregateId", ""),
                                     "payload", HashMap.of(
-                                        "franchiseId", getValue(command, "franchiseId", ""),
-                                        "franchiseName", getValue(command, "franchiseName", "")
+                                            "franchiseId", getValue(command, "franchiseId", ""),
+                                            "franchiseName", getValue(command, "franchiseName", "")
                                     )
-                            )));
+                            )
+                            ));
                         }
                     }
 
@@ -248,7 +244,7 @@ public class CommandController {
                         } else {
                             yield Mono.just(List.of(HashMap.of(
                                     "type", "FranchiseNameUpdated",
-                                    "aggregateId", getValue(command, "aggregateId", ""),
+                                    "aggregateId", getValue(state, "aggregateId", ""),
                                     "payload", HashMap.of(
                                             "newFranchiseName", getValue(command, "newName", ""),
                                             "oldFranchiseName", getValue(state, "franchiseName", "")
@@ -269,7 +265,7 @@ public class CommandController {
                             } else {
                                 yield Mono.just(List.of(HashMap.of(
                                         "type", "BranchAdded",
-                                        "aggregateId", getValue(command, "aggregateId", ""),
+                                        "aggregateId", getValue(state, "aggregateId", ""),
                                         "payload", HashMap.of(
                                                 "branchId", getValue(command, "branchId", ""),
                                                 "branchName", getValue(command, "branchName", "")
@@ -288,7 +284,7 @@ public class CommandController {
                             String oldBranchName = getValue(command, "branchId", "");
                             yield Mono.just(List.of(HashMap.of(
                                     "type", "BranchNameUpdated",
-                                    "aggregateId", getValue(command, "aggregateId", ""),
+                                    "aggregateId", getValue(state, "aggregateId", ""),
                                     "payload", HashMap.of(
                                             "branchId", getValue(command, "branchId", ""),
                                             "newBranchName", getValue(command, "newName", ""),
@@ -310,7 +306,7 @@ public class CommandController {
                             } else {
                                 yield Mono.just(List.of(HashMap.of(
                                         "type", "ProductAddedToBranch",
-                                        "aggregateId", getValue(command, "aggregateId", ""),
+                                        "aggregateId", getValue(state, "aggregateId", ""),
                                         "payload", HashMap.of(
                                                 "branchId", getValue(command, "branchId", ""),
                                                 "productId", getValue(command, "productId", ""),
@@ -342,7 +338,7 @@ public class CommandController {
                                 } else {
                                     yield Mono.just(List.of(HashMap.of(
                                             "type", "ProductStockUpdated",
-                                            "aggregateId", getValue(command, "aggregateId", ""),
+                                            "aggregateId", getValue(state, "aggregateId", ""),
                                             "payload", HashMap.of(
                                                     "branchId", getValue(command, "branchId", ""),
                                                     "productId", getValue(command, "productId", ""),
@@ -374,7 +370,7 @@ public class CommandController {
                                 } else {
                                     yield Mono.just(List.of(HashMap.of(
                                             "type", "ProductTransferredBetweenBranches",
-                                            "aggregateId", getValue(command, "aggregateId", ""),
+                                            "aggregateId", getValue(state, "aggregateId", ""),
                                             "payload", HashMap.of(
                                                     "fromBranchId", getValue(command, "fromBranchId", ""),
                                                     "toBranchId", getValue(command, "toBranchId", ""),
@@ -399,7 +395,7 @@ public class CommandController {
                             } else {
                                 yield Mono.just(List.of(HashMap.of(
                                         "type", "ProductRemovedFromBranch",
-                                        "aggregateId", getValue(command, "aggregateId", ""),
+                                        "aggregateId", getValue(state, "aggregateId", ""),
                                         "payload", HashMap.of(
                                                 "branchId", getValue(command, "branchId", ""),
                                                 "productId", getValue(command, "productId", "")
@@ -421,7 +417,7 @@ public class CommandController {
                             } else {
                                 yield Mono.just(List.of(HashMap.of(
                                         "type", "BranchRemoved",
-                                        "aggregateId", getValue(command, "aggregateId", ""),
+                                        "aggregateId", getValue(state, "aggregateId", ""),
                                         "payload", HashMap.of(
                                                 "branchId", getValue(command, "branchId", "")
                                         )
@@ -441,7 +437,7 @@ public class CommandController {
                             } else {
                                 yield Mono.just(List.of(HashMap.of(
                                         "type", "FranchiseRemoved",
-                                        "aggregateId", getValue(command, "aggregateId", ""),
+                                        "aggregateId", getValue(state, "aggregateId", ""),
                                         "payload", HashMap.empty()
                                 )));
                             }
@@ -465,7 +461,7 @@ public class CommandController {
                                 } else {
                                     yield Mono.just(List.of(HashMap.of(
                                             "type", "ProductStockAdjusted",
-                                            "aggregateId", getValue(command, "aggregateId", ""),
+                                            "aggregateId", getValue(state, "aggregateId", ""),
                                             "payload", HashMap.of(
                                                     "branchId", getValue(command, "branchId", ""),
                                                     "productId", getValue(command, "productId", ""),
@@ -493,7 +489,7 @@ public class CommandController {
                                 } else {
                                     yield Mono.just(List.of(HashMap.of(
                                             "type", "NotifyStockDepleted",
-                                            "aggregateId", getValue(command, "aggregateId", ""),
+                                            "aggregateId", getValue(state, "aggregateId", ""),
                                             "payload", HashMap.of(
                                                     "branchId", getValue(command, "branchId", ""),
                                                     "productId", getValue(command, "productId", "")
