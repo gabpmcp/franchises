@@ -82,7 +82,7 @@ public class Utils {
 
         return Mono.just(checkIfHashExists.apply(hash))
                 .flatMap(exists -> exists
-                    ? Mono.error(new IllegalArgumentException("Idempotent request %s, already processed".formatted(commandContent)))
+                    ? Mono.error(new IllegalArgumentException("Idempotent request %s    , already processed".formatted(commandContent)))
                     : Mono.just(command.put("aggregateId", hash))); // Continuar si no fue procesado
     };
 
