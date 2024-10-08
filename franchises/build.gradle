@@ -43,6 +43,11 @@ dependencies {
 	implementation 'software.amazon.awssdk:dynamodb:2.28.16'
 	compileOnly 'software.amazon.awssdk:aws-sdk-java:2.28.16'
 
+	// https://mvnrepository.com/artifact/org.quicktheories/quicktheories
+	testImplementation 'org.quicktheories:quicktheories-core:0.26'
+	testImplementation 'org.quicktheories:quicktheories:0.26'
+	testImplementation 'org.quicktheories:quicktheories-generators:0.26'
+
 }
 
 tasks.named('test') {

@@ -60,7 +60,7 @@ public class Utils {
     public static Function1<Function2<List<Map<String, Serializable>>, String, List<Map<String, Serializable>>>, Step> persistEvents = saveEvents -> result -> {
         // Persistencia en DynamoDB
         var events = getValue(result, "events", List.<Map<String, Serializable>>empty());
-        var aggregateId = getValue(result,"aggregateId", "");
+        var aggregateId = getValue(result,"command.aggregateId", "");
         saveEvents.apply(events, aggregateId);
         return Mono.just(result);
     };
