@@ -24,8 +24,8 @@ public class EventStoreFactory {
     public static Function1<String, Boolean> checkIfHashExistsInDynamo() {
         return hash -> {
             QueryRequest queryRequest = QueryRequest.builder()
-                    .tableName("Events")  // Nombre de la tabla DynamoDB
-                    .keyConditionExpression("aggregateId = :hash")  // Condición para verificar si existe el hash
+                    .tableName("Idempotency")  // Nombre de la tabla DynamoDB
+                    .keyConditionExpression("hashCommand = :hash")  // Condición para verificar si existe el hash
                     .expressionAttributeValues(HashMap.of(":hash", AttributeValue.builder().s(hash).build()).toJavaMap())
                     .build();
 
@@ -41,27 +41,26 @@ public class EventStoreFactory {
         return aggregateId -> {
             // Configurar la solicitud de consulta a DynamoDB (ajusta los nombres de tablas y atributos según tu diseño)
             QueryRequest queryRequest = QueryRequest.builder()
-                    .tableName("Events") // Nombre de la tabla en DynamoDB
-                    .keyConditionExpression("aggregateId = :aggregateId")
-                    .expressionAttributeValues(HashMap.of(":aggregateId", AttributeValue.builder().s(aggregateId).build()).toJavaMap())
-                    .consistentRead(true)
-                    .build();
+                .tableName("Events") // Nombre de la tabla en DynamoDB
+                .keyConditionExpression("aggregateId = :aggregateId")
+                .expressionAttributeValues(HashMap.of(":aggregateId", AttributeValue.builder().s(aggregateId).build()).toJavaMap())
+                .consistentRead(true)
+                .build();
 
             // Ejecutar la consulta en DynamoDB
             QueryResponse response = dynamoDbClient.query(queryRequest);
 
-            // Convertir los resultados de DynamoDB a la estructura de eventos esperada
             return List.ofAll(response.items().stream())
-                    .map(item -> HashMap.of(
-                            "aggregateId", item.get("aggregateId").s(),
-                            "version", item.get("version").n(),
-                            "type", item.get("type").s(),
-                            "timestamp", item.get("timestamp").s(),
-                            // Mapea el payload como un JSON o HashMap dependiendo de la estructura
-                            "payload", HashMap.ofAll(item.get("payload").m()).mapValues(AttributeValue::s),
-                            // Metadata también puede ser otro HashMap dependiendo de la estructura
-                            "metadata", HashMap.ofAll(item.get("metadata").m()).mapValues(AttributeValue::s)
-                    ));
+                .map(item -> HashMap.of(
+                    "aggregateId", item.get("aggregateId").s(),
+                    "version", item.get("version").n(),
+                    "type", item.get("type").s(),
+                    "timestamp", item.get("timestamp").s(),
+                    // Mapea el payload como un JSON o HashMap dependiendo de la estructura
+                    "payload", HashMap.ofAll(item.get("payload").m()).mapValues(AttributeValue::s),
+                    // Metadata también puede ser otro HashMap dependiendo de la estructura
+                    "metadata", HashMap.ofAll(item.get("metadata").m()).mapValues(AttributeValue::s)
+                ));
         };
     }
 
@@ -78,7 +77,6 @@ public class EventStoreFactory {
         return result.items().isEmpty() ? 0 : Integer.parseInt(result.items().getFirst().get("sortKey").n());
     }
 
-    // Función sin argumentos que retorna una Function2
     public static Function2<List<Map<String, Serializable>>, String, List<Map<String, Serializable>>> saveEventsStrongly() {
         return (events, aggregateId) -> {
             int maxEvent = getMaxVersionForAggregate(aggregateId);
@@ -96,17 +94,40 @@ public class EventStoreFactory {
         };
     }
 
+    // Función sin argumentos que retorna una Function2
+    public static Function2<String, String, Map<String, Serializable>> createAggregate() {
+        return (hash, aggregateId) -> {
+            TransactWriteItem transactWriteItems = createTransactWriteItem(aggregateId, hash);
+
+            TransactWriteItemsRequest transactRequest = TransactWriteItemsRequest.builder()
+                    .transactItems(transactWriteItems)
+                    .build();
+
+            dynamoDbClient.transactWriteItems(transactRequest);  // Esto asegura que las operaciones son ACID
+
+            return HashMap.of("aggregateId", aggregateId, "hash", hash);
+        };
+    }
+
+    private static TransactWriteItem createTransactWriteItem(String aggregateId, String hash) {
+        Put put = Put.builder()
+                .tableName("Idempotency")
+                .item(HashMap.of("aggregateId", AttributeValue.builder().s(aggregateId).build(), "hashCommand", AttributeValue.builder().s(hash).build()).toJavaMap())
+                .build();
+        return TransactWriteItem.builder().put(put).build();
+    }
+
     private static TransactWriteItem createTransactWriteItem(String aggregateId, Tuple2<Map<String, Serializable>, Integer> versionedEvent) {
         Put put = Put.builder()
                 .tableName("Events")
-                .item(createPutRequest(aggregateId, versionedEvent._2(), versionedEvent._1()).toJavaMap())
+                .item(putEventRequest(aggregateId, versionedEvent._2(), versionedEvent._1()).toJavaMap())
                 .build();
         return TransactWriteItem.builder().put(put).build();
     }
 
     // Función auxiliar para crear una solicitud de PutItem para cada evento
-    private static Map<String, AttributeValue> createPutRequest(String aggregateId, int version, Map<String, Serializable> event) {
-        return io.vavr.collection.HashMap.of(
+    private static Map<String, AttributeValue> putEventRequest(String aggregateId, int version, Map<String, Serializable> event) {
+        return HashMap.of(
                 "aggregateId", AttributeValue.builder().s(aggregateId).build(),
                 "timestamp", AttributeValue.builder().s(DateTimeFormatter.ISO_INSTANT.format(Instant.now())).build(),
                 "type", AttributeValue.builder().s(getValue(event, "type", "")).build(),
