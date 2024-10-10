@@ -1,0 +1,23 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  EventStoreTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: EventStoreTable
+      AttributeDefinitions:
+        - AttributeName: aggregateId
+          AttributeType: S
+        - AttributeName: version
+          AttributeType: N
+      KeySchema:
+        - AttributeName: aggregateId
+          KeyType: HASH  # Partition key
+        - AttributeName: version
+          KeyType: RANGE # Sort key
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE  # Configura para observar las nuevas imágenes de los eventos
+      SSESpecification:
+        SSEEnabled: true  # Habilita la encriptación en reposo para mayor seguridad
