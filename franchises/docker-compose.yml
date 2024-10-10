@@ -1,10 +1,28 @@
 services:
+  franchises-app:
+    image: franchises-app:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"  # Exponer el puerto de la aplicación
+    environment:
+      - AWS_REGION=us-east-2
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000  # Punto de acceso local de DynamoDB
+    depends_on:
+      - dynamodb-local
+
   dynamodb-local:
     image: amazon/dynamodb-local
+    container_name: dynamodb-local
     ports:
-      - "8000:8000"
-    networks:
-      - nequi-network
+      - "8000:8000"  # Exponer DynamoDB localmente
+    volumes:
+      - dynamodb_data:/data  # Montar los datos de DynamoDB en un volumen persistente
+
+volumes:
+  dynamodb_data:
+    driver: local
 
 networks:
   nequi-network:
