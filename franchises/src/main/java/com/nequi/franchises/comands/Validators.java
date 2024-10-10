@@ -4,10 +4,12 @@ import io.vavr.collection.List;
 
 import java.util.regex.Pattern;
 
+import static com.nequi.franchises.util.Utils.getValue;
+
 public class Validators {
     public static Validator required(String field) {
         return (input) -> {
-            Object value = input.data().getOrElse(field, null);
+            Object value = input.getAs(field, null);
             if (value == null || value.toString().isEmpty() || value.toString().isBlank()) {
                 return new ValidationResult(false, List.of("%s is required".formatted(field)));
             }
@@ -39,7 +41,7 @@ public class Validators {
     public static Validator isPositive(String field) {
         return (input) -> {
             try {
-                int value = Integer.parseInt(input.data().getOrElse(field, "").toString());
+                int value = Integer.parseInt(input.getAs(field, ""));
                 if (value <= 0) {
                     return new ValidationResult(false, List.of("%s must be a positive number".formatted(field)));
                 }
@@ -73,7 +75,7 @@ public class Validators {
     public static Validator isNumeric(String field) {
         return (input) -> {
             try {
-                Integer.parseInt(input.data().getOrElse(field, "").toString());
+                Integer.parseInt(input.getAs(field, ""));
                 return new ValidationResult(true, List.of());
             } catch (NumberFormatException e) {
                 return new ValidationResult(false, List.of("%s must be a numeric value".formatted(field)));
@@ -84,7 +86,7 @@ public class Validators {
     public static Validator isUUID(String field) {
         return (input) -> {
             try {
-                java.util.UUID.fromString(input.data().get(field).toString());
+                java.util.UUID.fromString(input.getAs(field, ""));
                 return new ValidationResult(true, List.of());
             } catch (IllegalArgumentException e) {
                 return new ValidationResult(false, List.of("%s must be a valid UUID".formatted(field)));

@@ -2,6 +2,7 @@ package com.nequi.franchises;
 
 import com.nequi.franchises.comands.Command;
 import com.nequi.franchises.comands.ValidationResult;
+import com.nequi.franchises.comands.Validator;
 import com.nequi.franchises.util.Step;
 import com.nequi.franchises.util.Utils;
 import io.vavr.Function1;
@@ -77,12 +78,18 @@ public class CommandController {
                             required("branchId"), isNonEmptyString("branchId"),
                             matchesPattern("branchId", "[A-Z]*\\d+"),
                             required("branchName"), isNonEmptyString("branchName"));
-                case "AddProductToBranch" -> new Command("AddProductToBranch", command)
-                        .validate(required("franchiseId"), isNonEmptyString("franchiseId"),
-                            matchesPattern("franchiseId", "[A-Z]*\\d+"),
-                            required("branchId"), isNonEmptyString("branchId"), matchesPattern("branchId", "[A-Z]*\\d+"),
-                            required("productName"), isNonEmptyString("productName"),
-                            required("initialStock"), isPositive("initialStock"), isNumeric("initialStock"));
+                case "AddProductToBranch" -> {
+                    var nameValidators = HashMap.ofAll(getValue(command, "products", java.util.Map.of())).toList()
+                        .map(entry -> required("products.%s.productName".formatted(entry._1())));
+                    var stockValidators = HashMap.ofAll(getValue(command, "products", java.util.Map.of())).toList()
+                        .map(entry -> required("products.%s.initialStock".formatted(entry._1())));
+                    List<Validator> validators = List.of(required("franchiseId"), isNonEmptyString("franchiseId"),
+                        matchesPattern("franchiseId", "[A-Z]*\\d+"),
+                        required("branchId"), isNonEmptyString("branchId"), matchesPattern("branchId", "[A-Z]*\\d+"))
+                    .appendAll(nameValidators)
+                    .appendAll(stockValidators);
+                    yield new Command("AddProductToBranch", command).validate(validators.toJavaArray(Validator[]::new));
+                }
                 case "UpdateBranchName" -> new Command("UpdateBranchName", command)
                         .validate(required("franchiseId"), isNonEmptyString("franchiseId"),
                             matchesPattern("franchiseId", "[A-Z]*\\d+"),
@@ -148,13 +155,13 @@ public class CommandController {
                         getValue(getBranches(state), getValue(getValue(event, "payload", HashMap.empty()), "branchId", ""), HashMap.<String, Serializable>empty())
                                 .put("branchName", getValue(getValue(event, "payload", HashMap.empty()), "newBranchName", ""))));
 
-                case "ProductAddedToBranch" -> state.put("branches", getBranches(state).put(
-                        getValue(getValue(event, "payload", HashMap.empty()), "branchId", ""),
-                        getValue(getBranches(state), getValue(getValue(event, "payload", HashMap.empty()), "branchId", ""), HashMap.<String, Serializable>empty())
-                                .put("products", getProducts(getValue(getBranches(state), getValue(getValue(event, "payload", HashMap.empty()), "branchId", ""), HashMap.<String, Serializable>empty())
-                                        .put(getValue(getValue(event, "payload", HashMap.empty()), "productId", ""),
-                                                HashMap.of("productName", getValue(getValue(event, "payload", HashMap.empty()), "productName", ""),
-                                                        "currentStock", getValue(getValue(event, "payload", HashMap.empty()), "initialStock", 0)))))));
+                case "ProductAddedToBranch" -> {
+                    var requestedBranch = getValue(state, "branches", HashMap.<String, Serializable>empty())
+                        .filter(branch -> branch._1().equals(getValue(event, "payload.branchId", "")));
+                    var oldProducts = getValue(requestedBranch, "products", HashMap.empty()); //.merge(getValue(event));
+                    yield HashMap.empty();
+//                    branches.map((branchId, branch) -> getValue(branch, "products", HashMap.empty()))
+                }
 
                 case "ProductStockUpdated" -> {
                     String branchId = getValue(getValue(event, "payload", HashMap.empty()), "branchId", "");
@@ -246,6 +253,10 @@ public class CommandController {
                     }
 
                     case "UpdateFranchiseName" -> {
+                        // Validación: La franquicia del comando debe coincidir con la de la creación
+                        if (!state.containsValue(getValue(command, "franchiseId", ""))) {
+                            yield Mono.error(new IllegalStateException("La franquicia no corresponde al orden lógico de los eventos. Tal vez quieras ajustar la franquicia o necesites modelar una interacción nueva."));
+                        }
                         // Validación: La franquicia debe existir
                         if (!getValue(state, "franchiseExists", false)) {
                             yield Mono.error(new IllegalStateException("La franquicia no existe."));
@@ -262,6 +273,10 @@ public class CommandController {
                     }
 
                     case "AddBranch" -> {
+                        // Validación: La franquicia del comando debe coincidir con la de la creación
+                        if (!state.containsValue(getValue(command, "franchiseId", ""))) {
+                            yield Mono.error(new IllegalStateException("La franquicia no corresponde al orden lógico de los eventos. Tal vez quieras ajustar la franquicia o necesites modelar una interacción nueva."));
+                        }
                         // Validación: La franquicia debe existir
                         if (!getValue(state, "franchiseExists", false)) {
                             yield Mono.error(new IllegalStateException("La franquicia no existe."));
@@ -303,10 +318,15 @@ public class CommandController {
                     }
 
                     case "AddProductToBranch" -> {
+                        // Validación: La franquicia del comando debe coincidir con la de la creación
+                        if (!state.containsValue(getValue(command, "franchiseId", ""))) {
+                            yield Mono.error(new IllegalStateException("La franquicia no corresponde al orden lógico de los eventos. Tal vez quieras ajustar la franquicia o necesites modelar una interacción nueva."));
+                        }
+
                         // Validación: La sucursal debe existir
                         Map<String, Map<String, Serializable>> branches = getValue(state, "branches", HashMap.empty());
                         if (!branches.containsKey(getValue(command, "branchId", ""))) {
-                            yield Mono.error(new IllegalStateException("La sucursal no existe."));
+                            yield Mono.error(new IllegalStateException("La sucursal no existe o no pertenece a la franquicia."));
                         } else {
                             Map<String, Serializable> products = getValue(branches, getValue(command, "branchId", ""), HashMap.empty());
                             if (products.containsKey(getValue(command, "productId", ""))) {

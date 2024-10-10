@@ -1,9 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Resources:
-  EventStoreTable:
+  Events:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: EventStoreTable
+      TableName: Events
       AttributeDefinitions:
         - AttributeName: aggregateId
           AttributeType: S
@@ -21,3 +21,23 @@ Resources:
         StreamViewType: NEW_IMAGE  # Configura para observar las nuevas imágenes de los eventos
       SSESpecification:
         SSEEnabled: true  # Habilita la encriptación en reposo para mayor seguridad
+
+  Idempotency:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: Idempotency
+      AttributeDefinitions:
+        - AttributeName: hashCommand
+          AttributeType: S
+        - AttributeName: aggregateId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: hashCommand
+          KeyType: HASH  # Partition key
+        - AttributeName: aggregateId
+          KeyType: RANGE # Sort key
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      SSESpecification:
+        SSEEnabled: true

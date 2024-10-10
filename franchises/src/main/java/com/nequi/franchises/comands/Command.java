@@ -4,6 +4,7 @@ import io.vavr.collection.HashMap;
 import io.vavr.collection.List;
 import io.vavr.collection.Map;
 import io.vavr.collection.Stream;
+import io.vavr.control.Option;
 
 import java.io.Serializable;
 
@@ -27,7 +28,15 @@ public record Command(String type, Map<String, Serializable> data) {
             errors.foldLeft(List.empty(), (accum, current) -> accum.appendAll(current.errors()).distinct()));
     }
 
-    public Map<String, Serializable> toMap() {
-        return HashMap.of("type", type, "data", data);
+    private Option<Object> getNestedValue(Map<String, ?> map, String key) {
+        return Stream.of(key.split("\\."))
+            .foldLeft(Option.of(map), (optMap, part) ->
+                optMap.flatMap(m -> {
+                    if (m instanceof Map) {
+                        return Option.of(((Map<String, ?>) m).get(part));
+                    }
+                    return Option.none();
+                })
+            );
     }
 }

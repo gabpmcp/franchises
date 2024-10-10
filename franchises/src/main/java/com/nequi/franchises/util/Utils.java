@@ -14,6 +14,7 @@ import reactor.core.publisher.Mono;
 import java.io.Serializable;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.LinkedHashMap;
 import java.util.UUID;
 
 import static com.nequi.franchises.IO.EventStoreFactory.*;
@@ -23,7 +24,7 @@ public class Utils {
     public static <K, T> T getValue(Map<K, ?> map, K key, T defaultValue) {
         // Si la key es un String con ".", buscamos en el path anidado
         if (key instanceof String && ((String) key).contains(".")) {
-            return (T) getValueByPath((Map<String, Object>) map, (String) key).getOrElse(defaultValue);
+            return (T) getValueByPath((Map<String, Object>) map, key.toString()).getOrElse(defaultValue);
         }
         // Si no es anidado, buscamos el valor atómico
         var value = map.get(key).toOption();
@@ -35,13 +36,14 @@ public class Utils {
                 .flatMap(keys -> traverse(map, keys, 0));
     }
 
+    @SuppressWarnings("unchecked")
     private static Option<Object> traverse(Map<String, Object> map, String[] keys, int index) {
         return index == keys.length
                 ? Option.none()
                 : map.get(keys[index])
                 .flatMap(v -> (index == keys.length - 1)
                         ? Option.of(v)
-                        : Option.of(v).flatMap(subMap -> traverse((Map<String, Object>) subMap, keys, index + 1)));
+                        : Option.of(v).flatMap(subMap -> (subMap instanceof HashMap<?,?> s) ? traverse((Map<String, Object>) s, keys, index + 1) : traverse(HashMap.ofAll((LinkedHashMap<String, Object>) subMap), keys, index + 1)));
     }
 
     // Función para cargar eventos desde el event store
@@ -62,9 +64,13 @@ public class Utils {
         // Persistencia en DynamoDB
         var events = getValue(result, "events", List.<Map<String, Serializable>>empty());
         var aggregateId = getValue(events.get(),"aggregateId", "");
-        Function1<String, Map<String, Serializable>> createAggregateFunc =
-                getValue(result, "command.createAggregateFunc", null);
-        createAggregateFunc.apply(aggregateId);
+
+        if(getValue(result, "command", HashMap.empty()).contains(Tuple.of("type", "CreateFranchise"))) {
+            Function1<String, Map<String, Serializable>> createAggregateFunc =
+                    getValue(result, "command.createAggregateFunc", null);
+            createAggregateFunc.apply(aggregateId);
+        }
+
         saveEvents.apply(events, aggregateId);
         return Mono.just(result.remove("command"));
     };

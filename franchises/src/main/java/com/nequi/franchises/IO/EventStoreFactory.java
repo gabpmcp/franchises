@@ -74,7 +74,7 @@ public class EventStoreFactory {
             .build();
 
         QueryResponse result = dynamoDbClient.query(queryRequest);
-        return result.items().isEmpty() ? 0 : Integer.parseInt(result.items().getFirst().get("sortKey").n());
+        return result.items().isEmpty() ? 0 : Integer.parseInt(result.items().getFirst().get("version").n());
     }
 
     public static Function2<List<Map<String, Serializable>>, String, List<Map<String, Serializable>>> saveEventsStrongly() {
