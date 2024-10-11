@@ -5,9 +5,7 @@ import com.nequi.franchises.comands.ValidationResult;
 import com.nequi.franchises.comands.Validator;
 import com.nequi.franchises.util.Step;
 import com.nequi.franchises.util.Utils;
-import io.vavr.Function1;
 import io.vavr.Function2;
-import io.vavr.Function3;
 import io.vavr.collection.HashMap;
 import io.vavr.collection.List;
 
@@ -32,8 +30,8 @@ public class CommandController {
         List.of(HashMap.of("aggregateId", UUID.randomUUID(), "type", "FranchiseCreated", "payload", HashMap.of("franchiseId", franchiseId, "franchiseName", franchiseName, "version", 1)));
 
     @PostMapping("/command")
-    public Mono<ResponseEntity<Map<String, Serializable>>> handleCommand(@RequestBody java.util.Map<String, Serializable> commandMap) {
-        return createCommandHandler().apply(HashMap.ofAll(commandMap)) // Directamente invoca createCommandHandler
+    public Mono<ResponseEntity<Map<String, Serializable>>> handleCommand(@RequestBody Map<String, Serializable> commandMap) {
+        return createCommandHandler().apply(commandMap) // Directamente invoca createCommandHandler
                 .map(ResponseEntity::ok)
                 .onErrorResume(e -> Mono.just(ResponseEntity.badRequest().body(HashMap.of("error", e.getMessage()))));
     }
@@ -146,9 +144,7 @@ public class CommandController {
 
                 case "FranchiseNameUpdated" -> state.put("franchiseName", getValue(getValue(event, "payload", HashMap.empty()), "newFranchiseName", ""));
 
-                case "BranchAdded" -> state.put("branches", getBranches(state).put(
-                        getValue(getValue(event, "payload", HashMap.empty()), "branchId", ""),
-                        HashMap.of("branchName", getValue(getValue(event, "payload", HashMap.empty()), "branchName", ""), "products", HashMap.empty())));
+                case "BranchAdded" -> state.put("branches", getValue(state, "branches", HashMap.<String, Serializable>empty()).merge(getValue(event, "payload", HashMap.empty())));
 
                 case "BranchNameUpdated" -> state.put("branches", getBranches(state).put(
                         getValue(getValue(event, "payload", HashMap.empty()), "branchId", ""),
@@ -156,11 +152,8 @@ public class CommandController {
                                 .put("branchName", getValue(getValue(event, "payload", HashMap.empty()), "newBranchName", ""))));
 
                 case "ProductAddedToBranch" -> {
-                    var requestedBranch = getValue(state, "branches", HashMap.<String, Serializable>empty())
-                        .filter(branch -> branch._1().equals(getValue(event, "payload.branchId", "")));
-                    var oldProducts = getValue(requestedBranch, "products", HashMap.empty()); //.merge(getValue(event));
-                    yield HashMap.empty();
-//                    branches.map((branchId, branch) -> getValue(branch, "products", HashMap.empty()))
+                    Map<String, Serializable> result = getValue(state, "branches.products", HashMap.<String, Serializable>empty()).merge(getValue(event, "payload.products", HashMap.empty()), (stateProducts, eventProducts) -> eventProducts);
+                    yield result;
                 }
 
                 case "ProductStockUpdated" -> {
@@ -290,8 +283,8 @@ public class CommandController {
                                         "type", "BranchAdded",
                                         "aggregateId", getValue(command, "aggregateId", ""),
                                         "payload", HashMap.of(
-                                                "branchId", getValue(command, "branchId", ""),
-                                                "branchName", getValue(command, "branchName", "")
+                                            getValue(command, "branchId", ""),
+                                            getValue(command, "branchName", "")
                                         )
                                 )));
                             }
@@ -324,23 +317,19 @@ public class CommandController {
                         }
 
                         // Validación: La sucursal debe existir
-                        Map<String, Map<String, Serializable>> branches = getValue(state, "branches", HashMap.empty());
+                        Map<String, Serializable> branches = getValue(state, "branches", HashMap.empty());
+//                        Map<String, Serializable> products = getValue(state, "products", HashMap.empty());
                         if (!branches.containsKey(getValue(command, "branchId", ""))) {
                             yield Mono.error(new IllegalStateException("La sucursal no existe o no pertenece a la franquicia."));
                         } else {
-                            Map<String, Serializable> products = getValue(branches, getValue(command, "branchId", ""), HashMap.empty());
-                            if (products.containsKey(getValue(command, "productId", ""))) {
-                                yield Mono.error(new IllegalStateException("El producto ya existe en la sucursal."));
+                            Map<String, Serializable> existentProducts = getValue(command, "products", HashMap.<String, Serializable>empty()).filterKeys(getValue(state, "products", HashMap.<String, Serializable>empty())::containsKey);
+                            if (!existentProducts.isEmpty()) {
+                                yield Mono.error(new IllegalStateException("Hay productos que ya existen en la sucursal. %s".formatted(existentProducts)));
                             } else {
                                 yield Mono.just(List.of(HashMap.of(
                                         "type", "ProductAddedToBranch",
                                         "aggregateId", getValue(command, "aggregateId", ""),
-                                        "payload", HashMap.of(
-                                                "branchId", getValue(command, "branchId", ""),
-                                                "productId", getValue(command, "productId", ""),
-                                                "productName", getValue(command, "productName", ""),
-                                                "initialStock", getValue(command, "initialStock", "")
-                                        )
+                                        "payload", command.filterKeys(key -> !List.of("createAggregateFunc", "type", "aggregateId").contains(key))
                                 )));
                             }
                         }
