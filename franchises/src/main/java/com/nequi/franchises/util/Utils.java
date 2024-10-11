@@ -1,5 +1,6 @@
 package com.nequi.franchises.util;
 
+import com.nequi.franchises.IO.EventStoreFactory;
 import io.vavr.Function1;
 import io.vavr.Function2;
 import io.vavr.Tuple;
@@ -10,6 +11,7 @@ import io.vavr.control.Option;
 import io.vavr.control.Try;
 import org.jetbrains.annotations.NotNull;
 import reactor.core.publisher.Mono;
+import software.amazon.awssdk.services.dynamodb.model.AttributeValue;
 
 import java.io.Serializable;
 import java.nio.charset.StandardCharsets;

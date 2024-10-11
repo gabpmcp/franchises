@@ -77,9 +77,9 @@ public class CommandController {
                             matchesPattern("branchId", "[A-Z]*\\d+"),
                             required("branchName"), isNonEmptyString("branchName"));
                 case "AddProductToBranch" -> {
-                    var nameValidators = HashMap.ofAll(getValue(command, "products", java.util.Map.of())).toList()
+                    var nameValidators = getValue(command, "products", HashMap.empty()).toList()
                         .map(entry -> required("products.%s.productName".formatted(entry._1())));
-                    var stockValidators = HashMap.ofAll(getValue(command, "products", java.util.Map.of())).toList()
+                    var stockValidators = getValue(command, "products", HashMap.empty()).toList()
                         .map(entry -> required("products.%s.initialStock".formatted(entry._1())));
                     List<Validator> validators = List.of(required("franchiseId"), isNonEmptyString("franchiseId"),
                         matchesPattern("franchiseId", "[A-Z]*\\d+"),
@@ -152,7 +152,7 @@ public class CommandController {
                                 .put("branchName", getValue(getValue(event, "payload", HashMap.empty()), "newBranchName", ""))));
 
                 case "ProductAddedToBranch" -> {
-                    Map<String, Serializable> result = getValue(state, "branches.products", HashMap.<String, Serializable>empty()).merge(getValue(event, "payload.products", HashMap.empty()), (stateProducts, eventProducts) -> eventProducts);
+                    Map<String, Serializable> result = getValue(state, "products", HashMap.<String, Serializable>empty()).merge(getValue(event, "payload.products", HashMap.empty()), (stateProducts, eventProducts) -> eventProducts);
                     yield result;
                 }
 
