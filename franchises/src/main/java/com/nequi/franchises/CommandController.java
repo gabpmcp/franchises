@@ -151,10 +151,7 @@ public class CommandController {
                         getValue(getBranches(state), getValue(getValue(event, "payload", HashMap.empty()), "branchId", ""), HashMap.<String, Serializable>empty())
                                 .put("branchName", getValue(getValue(event, "payload", HashMap.empty()), "newBranchName", ""))));
 
-                case "ProductAddedToBranch" -> {
-                    Map<String, Serializable> result = getValue(state, "products", HashMap.<String, Serializable>empty()).merge(getValue(event, "payload.products", HashMap.empty()), (stateProducts, eventProducts) -> eventProducts);
-                    yield result;
-                }
+                case "ProductAddedToBranch" -> state.put("products", getValue(state, "products", HashMap.<String, Serializable>empty()).merge(getValue(event, "payload.products", HashMap.empty()), (stateProducts, eventProducts) -> eventProducts));
 
                 case "ProductStockUpdated" -> {
                     String branchId = getValue(getValue(event, "payload", HashMap.empty()), "branchId", "");
