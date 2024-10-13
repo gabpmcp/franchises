@@ -89,9 +89,7 @@ public class CommandController {
                     yield new Command("AddProductToBranch", command).validate(validators.toJavaArray(Validator[]::new));
                 }
                 case "UpdateBranchName" -> new Command("UpdateBranchName", command)
-                        .validate(required("franchiseId"), isNonEmptyString("franchiseId"),
-                            matchesPattern("franchiseId", "[A-Z]*\\d+"),
-                            required("branchId"), isNonEmptyString("branchId"),
+                        .validate(required("branchId"), isNonEmptyString("branchId"),
                             matchesPattern("branchId", "[A-Z]*\\d+"), required("newName"),
                             isNonEmptyString("newName"));
                 case "UpdateProductStock" -> new Command("UpdateProductStock", command)
@@ -294,7 +292,7 @@ public class CommandController {
                         if (!branches.containsKey(getValue(command, "branchId", ""))) {
                             yield Mono.error(new IllegalStateException("La sucursal no existe."));
                         } else {
-                            String oldBranchName = getValue(command, "branchId", "");
+                            String oldBranchName = getValue(branches, getValue(command, "branchId", ""), "");
                             yield Mono.just(List.of(HashMap.of(
                                     "type", "BranchNameUpdated",
                                     "aggregateId", getValue(command, "aggregateId", ""),
