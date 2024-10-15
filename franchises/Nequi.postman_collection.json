@@ -1,0 +1,472 @@
+{
+	"info": {
+		"_postman_id": "037bc267-a4fa-448c-bfd0-29b9bf0ea95e",
+		"name": "Nequi",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "6538577"
+	},
+	"item": [
+		{
+			"name": "Create Franchise",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"type\": \"CreateFranchise\",\n    \"franchiseId\": \"STB781517\",\n    \"franchiseName\": \"Starbucks\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/command",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"command"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Second Franchise",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"type\": \"CreateFranchise\",\n    \"franchiseId\": \"QBN17\",\n    \"franchiseName\": \"Qbano Ilarco\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/command",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"command"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Update Franchise Name",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"aggregateId\": \"081fd79a-c6cd-4e1d-a5e7-92f0b6b8d7eb\",\n    \"type\": \"UpdateFranchiseName\",\n    \"franchiseId\": \"STB781517\",\n    \"newName\": \"Starbucks Premium\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/command",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"command"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Add Branch",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"aggregateId\": \"081fd79a-c6cd-4e1d-a5e7-92f0b6b8d7eb\",\n    \"type\": \"AddBranch\",\n    \"franchiseId\": \"STB781517\",\n    \"branchId\": \"SANTAANA1234\",\n    \"branchName\": \"Branch 1\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/command",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"command"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Add Branch Second Franchise",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"aggregateId\": \"c6b0cdd3-c336-4a81-bb3b-8d73488408d5\",\n    \"type\": \"AddBranch\",\n    \"franchiseId\": \"QBN17\",\n    \"branchId\": \"SANTAANA12345\",\n    \"branchName\": \"Branch 1\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/command",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"command"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Add Product to Branch",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"aggregateId\": \"081fd79a-c6cd-4e1d-a5e7-92f0b6b8d7eb\",\n    \"type\": \"AddProductToBranch\",\n    \"franchiseId\": \"STB781517\",\n    \"branchId\": \"SANTAANA1234\",\n    \"products\": {\n        \"PROD002\": {\n            \"productName\": \"La malteada más chimba\",\n            \"currentStock\": 10\n        }\n    }\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/command",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"command"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Update Branch Name",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"aggregateId\": \"081fd79a-c6cd-4e1d-a5e7-92f0b6b8d7eb\",\n    \"type\": \"UpdateBranchName\",\n    \"branchId\": \"SANTAANA1234\",\n    \"newName\": \"Santa Ana\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/command",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"command"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Update Product Stock",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"aggregateId\": \"081fd79a-c6cd-4e1d-a5e7-92f0b6b8d7eb\",\n    \"type\": \"UpdateProductStock\",\n    \"branchId\": \"SANTAANA1234\",\n    \"productId\": \"PROD002\",\n    \"quantityChange\": -8\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/command",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"command"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Remove Product From Branch",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"type\": \"RemoveProductFromBranch\",\n  \"franchiseId\": \"STB123\",\n  \"branchId\": \"SANTAANA123\",\n  \"productId\": \"123e4567-e89b-12d3-a456-426614174000\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/command",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"command"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Remove Branch",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"type\": \"RemoveBranch\",\n  \"franchiseId\": \"STB123\",\n  \"branchId\": \"SANTAANA123\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/command",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"command"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Remove Franchise",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"type\": \"RemoveFranchise\",\n  \"franchiseId\": \"STB123\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/command",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"command"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Notify Stock Depleted",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"type\": \"NotifyStockDepleted\",\n  \"franchiseId\": \"STB123\",\n  \"branchId\": \"SANTAANA123\",\n  \"productId\": \"123e4567-e89b-12d3-a456-426614174000\"\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/command",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"command"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Transfer Product Between Branches",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"type\": \"TransferProductBetweenBranches\",\n  \"franchiseId\": \"STB123\",\n  \"toFranchiseId\": \"STB123\",\n  \"branchId\": \"SANTAANA123\",\n  \"fromBranchId\": \"SANTAANA123\",\n  \"toBranchId\": \"GE123\",\n  \"productId\": \"123e4567-e89b-12d3-a456-426614174000\",\n  \"quantity\": 20\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/command",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"command"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "Adjust Product Stock",
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"type\": \"AdjustProductStock\",\n  \"productId\": \"123e4567-e89b-12d3-a456-426614174000\",\n  \"newStock\": 150\n}",
+					"options": {
+						"raw": {
+							"language": "json"
+						}
+					}
+				},
+				"url": {
+					"raw": "http://localhost:8080/command",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"command"
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}

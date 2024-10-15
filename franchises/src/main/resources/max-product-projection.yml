@@ -1,0 +1,33 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Resources:
+  MaxProductPerFranchiseTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: MaxProductPerFranchise
+      AttributeDefinitions:
+        - AttributeName: franchiseId
+          AttributeType: S
+        - AttributeName: branchId
+          AttributeType: S
+        - AttributeName: aggregateId   # Agrega la definición de aggregateId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: franchiseId
+          KeyType: HASH  # Partition key
+        - AttributeName: branchId
+          KeyType: RANGE # Sort key
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      SSESpecification:
+        SSEEnabled: true  # Habilitar encriptación en reposo
+      GlobalSecondaryIndexes:
+        - IndexName: AggregateIndex
+          KeySchema:
+            - AttributeName: aggregateId
+              KeyType: HASH  # Definir aggregateId como índice global secundario
+          Projection:
+            ProjectionType: ALL  # Proyectar todos los atributos en este índice
+          ProvisionedThroughput:
+            ReadCapacityUnits: 5
+            WriteCapacityUnits: 5
