@@ -73,13 +73,11 @@ public class Validators {
     }
 
     public static Validator isNumeric(String field) {
-        return (input) -> {
-            try {
-                Integer.parseInt(input.getAs(field, ""));
-                return new ValidationResult(true, List.of());
-            } catch (NumberFormatException e) {
-                return new ValidationResult(false, List.of("%s must be a numeric value".formatted(field)));
-            }
+        return input -> {
+            Object value = input.getAs(field, "");
+            return value instanceof Integer || (value instanceof String s && s.matches("-?\\d+"))
+                    ? new ValidationResult(true, List.of())
+                    : new ValidationResult(false, List.of("%s must be a numeric value".formatted(field)));
         };
     }
 

@@ -27,16 +27,4 @@ public record Command(String type, Map<String, Serializable> data) {
         return errors.isEmpty() ? new ValidationResult(true, List.empty()) : new ValidationResult(false,
             errors.foldLeft(List.empty(), (accum, current) -> accum.appendAll(current.errors()).distinct()));
     }
-
-    private Option<Object> getNestedValue(Map<String, ?> map, String key) {
-        return Stream.of(key.split("\\."))
-            .foldLeft(Option.of(map), (optMap, part) ->
-                optMap.flatMap(m -> {
-                    if (m instanceof Map) {
-                        return Option.of(((Map<String, ?>) m).get(part));
-                    }
-                    return Option.none();
-                })
-            );
-    }
 }

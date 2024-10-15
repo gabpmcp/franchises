@@ -80,7 +80,7 @@ public class CommandController {
                     var nameValidators = getValue(command, "products", HashMap.empty()).toList()
                         .map(entry -> required("products.%s.productName".formatted(entry._1())));
                     var stockValidators = getValue(command, "products", HashMap.empty()).toList()
-                        .map(entry -> required("products.%s.initialStock".formatted(entry._1())));
+                        .map(entry -> required("products.%s.currentStock".formatted(entry._1())));
                     List<Validator> validators = List.of(required("franchiseId"), isNonEmptyString("franchiseId"),
                         matchesPattern("franchiseId", "[A-Z]*\\d+"),
                         required("branchId"), isNonEmptyString("branchId"), matchesPattern("branchId", "[A-Z]*\\d+"))
@@ -93,11 +93,9 @@ public class CommandController {
                             matchesPattern("branchId", "[A-Z]*\\d+"), required("newName"),
                             isNonEmptyString("newName"));
                 case "UpdateProductStock" -> new Command("UpdateProductStock", command)
-                        .validate(required("franchiseId"), isNonEmptyString("franchiseId"),
-                            matchesPattern("franchiseId", "[A-Z]*\\d+"),
-                            required("branchId"), isNonEmptyString("branchId"),
+                        .validate(  required("branchId"), isNonEmptyString("branchId"),
                             matchesPattern("branchId", "[A-Z]*\\d+"),
-                            required("productId"), isNonEmptyString("productId"), isUUID("productId"),
+                            required("productId"), isNonEmptyString("productId"), matchesPattern("productId", "[A-Z]*\\d+"),
                             required("quantityChange"), isNumeric("quantityChange"));
                 case "RemoveProductFromBranch" -> new Command("RemoveProductFromBranch", command)
                         .validate(required("franchiseId"), isNonEmptyString("franchiseId"),
@@ -149,13 +147,11 @@ public class CommandController {
                     yield state.put("branches", getValue(event, "payload", HashMap.empty()).filterKeys("newBranchName"::equals).mapKeys(key -> "branchId".equals(key) ? key : branchKey));
                 }
 
-                case "ProductAddedToBranch" -> state.put("products", getValue(state, "products", HashMap.<String, Serializable>empty()).merge(getValue(event, "payload.products", HashMap.empty()), (stateProducts, eventProducts) -> eventProducts));
+                case "ProductAddedToBranch" -> state.put("products", getValue(state, "products", HashMap.<String, Serializable>empty()).merge(getValue(event, "payload.products", HashMap.<String, Map<String, Serializable>>empty()).mapKeys(product -> "%s|%s".formatted(product, getValue(event, "payload.branchId", ""))), (stateProducts, eventProducts) -> eventProducts));
 
                 case "ProductStockUpdated" -> {
-                    String branchId = getValue(getValue(event, "payload", HashMap.empty()), "branchId", "");
-                    String productId = getValue(getValue(event, "payload", HashMap.empty()), "productId", "");
-                    int quantityChange = getValue(getValue(event, "payload", HashMap.empty()), "quantity", 0);
-                    yield state.put("branches", getBranches(state).put(branchId, updateProductStock(getValue(getBranches(state), branchId, HashMap.empty()), productId, quantityChange)));
+                    String productKey = "%s|%s".formatted(getValue(event, "payload.productId", ""), getValue(event, "payload.branchId", ""));
+                    yield state.put("products", getValue(state, "products", HashMap.<String, Serializable>empty()).put(productKey, getValue(state, "products.%s".formatted(productKey), HashMap.<String, Serializable>empty()).put("currentStock", getValue(event, "payload.currentStock", 0.0))));
                 }
 
                 case "ProductStockAdjusted" -> {
@@ -191,8 +187,8 @@ public class CommandController {
     }
 
     // Función auxiliar para obtener el mapa de productos dentro de una sucursal
-    private static Map<String, Map<String, Serializable>> getProducts(Map<String, Serializable> branchData) {
-        return getValue(branchData, "products", HashMap.empty());
+    private static Map<String, Map<String, Serializable>> getProducts(Map<String, Serializable> data) {
+        return getValue(data, "products", HashMap.empty());
     }
 
     // Función para actualizar el stock de un producto
@@ -313,8 +309,8 @@ public class CommandController {
 
                         // Validación: La sucursal debe existir
                         Map<String, Serializable> branches = getValue(state, "branches", HashMap.empty());
-//                        Map<String, Serializable> products = getValue(state, "products", HashMap.empty());
-                        if (!branches.containsKey(getValue(command, "branchId", ""))) {
+                        String branchId = getValue(command, "branchId", "");
+                        if (!branches.containsKey(branchId)) {
                             yield Mono.error(new IllegalStateException("La sucursal no existe o no pertenece a la franquicia."));
                         } else {
                             Map<String, Serializable> existentProducts = getValue(command, "products", HashMap.<String, Serializable>empty()).filterKeys(getValue(state, "products", HashMap.<String, Serializable>empty())::containsKey);
@@ -333,28 +329,33 @@ public class CommandController {
                     case "UpdateProductStock" -> {
                         // Validación: La sucursal y el producto deben existir
                         Map<String, Map<String, Serializable>> branches = getValue(state, "branches", HashMap.empty());
-                        if (!branches.containsKey(getValue(command, "branchId", ""))) {
+                        String branchId = getValue(command, "branchId", "");
+                        String productId = getValue(command, "productId", "");
+                        String keyProduct = "%s|%s".formatted(productId, branchId);
+                        if (!branches.containsKey(branchId)) {
                             yield Mono.error(new IllegalStateException("La sucursal no existe."));
                         } else {
-                            Map<String, Serializable> products = getValue(branches, getValue(command, "branchId", ""), HashMap.empty());
-                            if (!products.containsKey(getValue(command, "productId", ""))) {
+                            Map<String, Map<String, Serializable>> products = getProducts(state);
+                            if (!products.containsKey(keyProduct)) {
                                 yield Mono.error(new IllegalStateException("El producto no existe en la sucursal."));
                             } else {
-                                int currentStock = getValue(getValue(products, getValue(command, "productId", ""), HashMap.empty()), "currentStock", 0);
+                                double currentStock = getValue(products, keyProduct.concat(".currentStock"), 0.0);
                                 int quantityChange = getValue(command, "quantityChange", 0);
-                                int newStock = currentStock + quantityChange;
+                                double newStock = currentStock + quantityChange;
 
                                 // Validación: El stock resultante no puede ser negativo
                                 if (newStock < 0) {
-                                    yield Mono.error(new IllegalStateException("El stock resultante no puede ser negativo."));
+                                    yield Mono.error(new IllegalStateException("El stock disponible no es suficiente para cubrir la demanda. Disponible: %s | Faltante: %s".formatted(currentStock, Math.abs(newStock))));
                                 } else {
                                     yield Mono.just(List.of(HashMap.of(
                                             "type", "ProductStockUpdated",
                                             "aggregateId", getValue(command, "aggregateId", ""),
                                             "payload", HashMap.of(
-                                                    "branchId", getValue(command, "branchId", ""),
-                                                    "productId", getValue(command, "productId", ""),
-                                                    "quantityChange", quantityChange
+                                                    "branchId", branchId,
+                                                    "productId", productId,
+                                                    "quantityChange", quantityChange,
+                                                    "previousStock", currentStock,
+                                                    "currentStock", newStock
                                             )
                                     )));
                                 }
