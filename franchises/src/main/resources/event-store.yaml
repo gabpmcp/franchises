@@ -41,3 +41,23 @@ Resources:
         WriteCapacityUnits: 5
       SSESpecification:
         SSEEnabled: true
+
+  MaxProductPerFranchiseTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: MaxProductPerFranchise
+      AttributeDefinitions:
+        - AttributeName: franchiseId
+          AttributeType: S
+        - AttributeName: branchId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: franchiseId
+          KeyType: HASH  # Partition key
+        - AttributeName: branchId
+          KeyType: RANGE # Sort key
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      SSESpecification:
+        SSEEnabled: true  # Encriptación en reposo
