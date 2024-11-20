@@ -23,29 +23,31 @@ import static com.nequi.franchises.IO.EventStoreFactory.*;
 
 public class Utils {
     @SuppressWarnings("unchecked")
-    public static <K, T> T getValue(Map<K, ?> map, K key, T defaultValue) {
-        // Si la key es un String con ".", buscamos en el path anidado
-        if (key instanceof String && ((String) key).contains(".")) {
-            return (T) getValueByPath((Map<String, Object>) map, key.toString()).getOrElse(defaultValue);
-        }
-        // Si no es anidado, buscamos el valor atómico
-        var value = map.get(key).toOption();
-        return value.isDefined() ? (T) value.get() : defaultValue;
+    public static <K, V, T> T getValue(Map<K, V> map, K key, T defaultValue) {
+        return key instanceof String && ((String) key).contains(".")
+            ? (T) getValueByPath((Map<String, V>) map, key.toString()).getOrElse(defaultValue)
+            : map.get(key).map(value -> (T) value).getOrElse(defaultValue);
     }
 
-    private static Option<Object> getValueByPath(Map<String, Object> map, String path) {
-        return Option.of(path.split("\\."))
-                .flatMap(keys -> traverse(map, keys, 0));
+    private static <V> Option<Object> getValueByPath(Map<String, V> map, String path) {
+        return traverse(map, path.split("\\."), 0).toOption();
     }
 
     @SuppressWarnings("unchecked")
-    private static Option<Object> traverse(Map<String, Object> map, String[] keys, int index) {
+    private static <V> Try<Object> traverse(Object current, String[] keys, int index) {
         return index == keys.length
-                ? Option.none()
-                : map.get(keys[index])
-                .flatMap(v -> (index == keys.length - 1)
-                        ? Option.of(v)
-                        : Option.of(v).flatMap(subMap -> (subMap instanceof HashMap<?,?> s) ? traverse((Map<String, Object>) s, keys, index + 1) : traverse(HashMap.ofAll((LinkedHashMap<String, Object>) subMap), keys, index + 1)));
+                ? Try.success(current)
+                : Try.of(() -> {
+            String key = keys[index];
+            if (current instanceof Map<?, ?> map) {
+                return traverse(((Map<String, V>) map).get(key).getOrNull(), keys, index + 1).get();
+            }
+            if (current instanceof Vector<?> vector) {
+                int arrayIndex = Integer.parseInt(key);
+                return traverse(vector.get(arrayIndex), keys, index + 1).get();
+            }
+            throw new IllegalArgumentException("Invalid path at: " + key);
+        }).recoverWith(ex -> Try.success(io.vavr.collection.HashMap.of("error", ex.getMessage())));
     }
 
     // Función para cargar eventos desde el event store
